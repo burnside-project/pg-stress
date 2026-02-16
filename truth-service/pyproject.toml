@@ -1,0 +1,9 @@
+[project]
+name = "truth-service"
+version = "0.1.0"
+description = "Validates pg-collector metrics against PostgreSQL ground truth"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

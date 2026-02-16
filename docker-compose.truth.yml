@@ -1,0 +1,135 @@
+# Truth Service: Validates pg-collector metrics against PostgreSQL ground truth
+#
+# Usage:
+#   make truth-up                      # Start postgres + collector + truth API
+#   curl http://localhost:8000/verify/cache-memory
+#   make truth-verify-cache-memory     # CLI mode (writes reports, exits 0/1)
+#   make truth-down                    # Tear down
+
+services:
+  # PostgreSQL target database (shared between collector and truth-service)
+  postgres:
+    image: postgres:15
+    container_name: truth-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: testdb
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.track=all"
+      - "-c"
+      - "pg_stat_statements.max=10000"
+      - "-c"
+      - "track_activities=on"
+      - "-c"
+      - "track_counts=on"
+      - "-c"
+      - "track_io_timing=on"
+    ports:
+      - "5434:5432"
+    volumes:
+      - truth-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - truth-net
+
+  # pg-collector in demo mode with local JSONL output
+  collector:
+    build:
+      context: ../burnside-project-collector-agent
+      dockerfile: Dockerfile
+      args:
+        BUILD_MODE: demo
+    container_name: truth-collector
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./truth-service/configs/collector-truth.yaml:/etc/pg-collector/config.yaml:ro
+      - collector-output:/data/collector-output
+      - collector-buffer:/var/lib/pg-collector
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - truth-net
+    restart: unless-stopped
+
+  # Truth Service API (server mode)
+  truth-service:
+    build:
+      context: ./truth-service
+      dockerfile: Dockerfile
+    container_name: truth-service
+    depends_on:
+      collector:
+        condition: service_healthy
+    environment:
+      TRUTH_PG_HOST: postgres
+      TRUTH_PG_PORT: 5432
+      TRUTH_PG_USER: postgres
+      TRUTH_PG_PASSWORD: postgres
+      TRUTH_PG_DATABASE: testdb
+      TRUTH_COLLECTOR_OUTPUT_PATH: /data/collector-output
+      TRUTH_COLLECTOR_DATABASE_ID: truth-test
+      TRUTH_SNAPSHOT_DELAY_SECONDS: 5
+      TRUTH_MAX_SAMPLE_AGE_SECONDS: 120
+    volumes:
+      - collector-output:/data/collector-output:ro
+      - truth-reports:/out
+    ports:
+      - "8000:8000"
+    networks:
+      - truth-net
+
+  # Truth verification runner (CLI mode — only starts with --profile verify)
+  truth-verify:
+    build:
+      context: ./truth-service
+      dockerfile: Dockerfile
+    container_name: truth-verify
+    depends_on:
+      collector:
+        condition: service_healthy
+    environment:
+      TRUTH_PG_HOST: postgres
+      TRUTH_PG_PORT: 5432
+      TRUTH_PG_USER: postgres
+      TRUTH_PG_PASSWORD: postgres
+      TRUTH_PG_DATABASE: testdb
+      TRUTH_COLLECTOR_OUTPUT_PATH: /data/collector-output
+      TRUTH_COLLECTOR_DATABASE_ID: truth-test
+      TRUTH_SNAPSHOT_DELAY_SECONDS: 5
+      TRUTH_MAX_SAMPLE_AGE_SECONDS: 120
+      TRUTH_CLI_MODE: "true"
+      TRUTH_REPORT_OUTPUT_PATH: /out
+    volumes:
+      - collector-output:/data/collector-output:ro
+      - truth-reports:/out
+    networks:
+      - truth-net
+    profiles:
+      - verify
+
+networks:
+  truth-net:
+    driver: bridge
+
+volumes:
+  truth-pg-data:
+  collector-output:
+  collector-buffer:
+  truth-reports:
