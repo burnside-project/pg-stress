@@ -310,6 +310,27 @@ services:
         max-file: "3"
 
   # ════════════════════════════════════════════════════════════════════════
+  # UI — Next.js control panel
+  # ════════════════════════════════════════════════════════════════════════
+
+  ui:
+    build:
+      context: ./ui
+    ports:
+      - "${UI_PORT:-3100}:3100"
+    networks:
+      - stress-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ════════════════════════════════════════════════════════════════════════
   # pg-collector — metrics collection — profile: collector
   # ════════════════════════════════════════════════════════════════════════
 
