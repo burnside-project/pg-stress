@@ -1,15 +1,21 @@
-# Burnside Project Test Suite
-# PostgreSQL OLTP Stress Testing + ORM Validation + pgbench Comparison
+# pg-stress — PostgreSQL Stress Testing Platform
 #
 # Quick start:
-#   make up                         Start core stack (pg + raw-SQL + dashboard)
-#   make up-orm                     Core + ORM load generator
-#   make up-bench                   Core + pgbench comparison
-#   make up-full                    Everything
-#   make deploy                     Deploy to remote server
+#   make up                              Start core stack (default intensity)
+#   make up INTENSITY=high               Start with high intensity
+#   make up-full INTENSITY=low           Everything at low intensity
+#   make import DUMP=/path/to/dump.sql   BYOD: restore production data
+#
+# Intensity: low | medium | high (default: medium)
 
 COMPOSE := docker compose
 SCENARIO ?= default
+INTENSITY ?= medium
+
+# Load intensity preset into environment.
+# The .env files in configs/intensity/ set 30+ variables at once.
+INTENSITY_ENV := configs/intensity/$(INTENSITY).env
+include $(wildcard $(INTENSITY_ENV))
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Core Stack — postgres + raw-SQL load generator + dashboard
@@ -19,10 +25,23 @@ SCENARIO ?= default
 up: ## Start core stack (postgres + load-generator + dashboard)
 	SCENARIO=$(SCENARIO) $(COMPOSE) up --build -d
 	@echo ""
-	@echo "  Dashboard:  http://localhost:8000"
-	@echo "  Postgres:   localhost:5434"
-	@echo "  Load Gen:   http://localhost:9090/healthz"
-	@echo "  Scenario:   $(SCENARIO)"
+	@echo "  Dashboard:      http://localhost:8000"
+	@echo "  Control Panel:  http://localhost:3100"
+	@echo "  Control Plane:  http://localhost:8100"
+	@echo "  Postgres:       localhost:5434"
+	@echo "  Intensity:      $(INTENSITY)"
+
+.PHONY: import
+import: ## BYOD: restore a pg_dump into the test database
+	@test -n "$(DUMP)" || (echo "Usage: make import DUMP=/path/to/dump.sql" && exit 1)
+	$(COMPOSE) up -d postgres
+	@echo "Waiting for PostgreSQL..."
+	@until $(COMPOSE) exec -T postgres pg_isready -U $${PG_USER:-postgres} 2>/dev/null; do sleep 2; done
+	@echo "Restoring $(DUMP)..."
+	$(COMPOSE) exec -T postgres pg_restore -U $${PG_USER:-postgres} -d $${PG_DATABASE:-testdb} --jobs=4 --no-owner --no-acl < $(DUMP) || true
+	$(COMPOSE) exec -T postgres psql -U $${PG_USER:-postgres} -d $${PG_DATABASE:-testdb} -c "ANALYZE VERBOSE"
+	@echo ""
+	@echo "Import complete. Start the stack with: make up"
 
 .PHONY: down
 down: ## Stop all services and remove volumes

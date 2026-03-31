@@ -668,6 +668,153 @@ def get_report(filename: str):
 # ── Health ───────────────────────────────────────────────────────────────
 
 
+# ── Import (BYOD) ────────────────────────────────────────────────────────
+
+
+class ImportRequest(BaseModel):
+    dump_path: str  # Path to pg_dump file on the server
+    database: Optional[str] = None  # Target DB name (default: testdb)
+    jobs: int = 4
+
+
+def _do_import(job_id: str, req: ImportRequest):
+    try:
+        db = req.database or PG_DATABASE
+        dump_path = req.dump_path
+
+        log.info("import: restoring %s into %s...", dump_path, db)
+
+        env = os.environ.copy()
+        env["PGPASSWORD"] = PG_PASSWORD
+
+        # Drop and recreate database.
+        subprocess.run(
+            ["psql", "-h", PG_HOST, "-p", str(PG_PORT), "-U", PG_USER,
+             "-c", f"DROP DATABASE IF EXISTS {db}",
+             "-c", f"CREATE DATABASE {db}"],
+            env=env, capture_output=True, text=True, timeout=30,
+        )
+
+        # Restore dump.
+        result = subprocess.run(
+            ["pg_restore", "-h", PG_HOST, "-p", str(PG_PORT), "-U", PG_USER,
+             "-d", db, "--jobs", str(req.jobs), "--no-owner", "--no-acl", dump_path],
+            env=env, capture_output=True, text=True, timeout=3600,
+        )
+
+        # ANALYZE.
+        subprocess.run(
+            ["psql", "-h", PG_HOST, "-p", str(PG_PORT), "-U", PG_USER, "-d", db,
+             "-c", "ANALYZE VERBOSE"],
+            env=env, capture_output=True, text=True, timeout=600,
+        )
+
+        # Auto-detect table sizes for BYOD.
+        table_counts = query("""
+            SELECT relname, n_live_tup
+            FROM pg_stat_user_tables
+            WHERE n_live_tup > 0
+            ORDER BY n_live_tup DESC
+        """)
+
+        complete_job(job_id, {
+            "database": db,
+            "dump_path": dump_path,
+            "tables": len(table_counts),
+            "table_counts": {r["relname"]: r["n_live_tup"] for r in table_counts[:20]},
+            "restore_stderr": result.stderr[-500:] if result.stderr else "",
+        })
+    except Exception as e:
+        complete_job(job_id, error=str(e))
+
+
+@app.post("/import")
+def import_dump(req: ImportRequest, background_tasks: BackgroundTasks):
+    if not os.path.exists(req.dump_path):
+        raise HTTPException(400, f"Dump file not found: {req.dump_path}")
+    job_id = new_job("import")
+    background_tasks.add_task(_do_import, job_id, req)
+    return {"job_id": job_id, "status": "started", "dump_path": req.dump_path}
+
+
+# ── Configuration ────────────────────────────────────────────────────────
+
+INTENSITY_DIR = Path("/app/project/configs/intensity")
+
+INTENSITY_PRESETS = {
+    "low": "Light load. No chaos. Safe for small databases.",
+    "medium": "Standard OLTP. Moderate bursts. Chaos at 25%.",
+    "high": "Heavy stress. 80 connections. Chaos at 50%. Finds breaking points.",
+}
+
+
+@app.get("/config")
+def get_config():
+    """Current database and intensity configuration."""
+    # Read current intensity from active env vars.
+    chaos = os.environ.get("LOADGEN_CHAOS_PROBABILITY", "25")
+    max_conns = os.environ.get("LOADGEN_BURST_HEAVY_CONNS", "50")
+    current = "medium"
+    if chaos == "0":
+        current = "low"
+    elif int(max_conns) >= 80:
+        current = "high"
+
+    return {
+        "database": {
+            "host": PG_HOST,
+            "port": PG_PORT,
+            "user": PG_USER,
+            "database": PG_DATABASE,
+        },
+        "intensity": {
+            "current": current,
+            "presets": INTENSITY_PRESETS,
+        },
+        "env_vars": {
+            k: v for k, v in os.environ.items()
+            if k.startswith(("LOADGEN_", "ORM_", "PGBENCH_", "STRESS_", "PG_"))
+        },
+    }
+
+
+class IntensityRequest(BaseModel):
+    level: str  # low, medium, high
+
+
+@app.post("/config/intensity")
+def set_intensity(req: IntensityRequest):
+    """Switch intensity preset. Requires stack restart to take effect."""
+    if req.level not in INTENSITY_PRESETS:
+        raise HTTPException(400, f"Unknown intensity: {req.level}. Options: {list(INTENSITY_PRESETS.keys())}")
+
+    env_file = INTENSITY_DIR / f"{req.level}.env"
+    if not env_file.exists():
+        raise HTTPException(500, f"Preset file not found: {env_file}")
+
+    # Read the preset and apply to environment.
+    applied = {}
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, val = line.split("=", 1)
+            os.environ[key.strip()] = val.strip()
+            applied[key.strip()] = val.strip()
+
+    return {
+        "status": "applied",
+        "intensity": req.level,
+        "description": INTENSITY_PRESETS[req.level],
+        "vars_set": len(applied),
+        "note": "Restart load generators for changes to take effect. Use POST /generators/orm/stop then /start.",
+    }
+
+
+# ── Health ───────────────────────────────────────────────────────────────
+
+
 @app.get("/", include_in_schema=False)
 def root():
     return RedirectResponse(url="/docs")

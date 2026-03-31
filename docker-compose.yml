@@ -22,9 +22,9 @@ services:
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: testdb
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-postgres}
+      POSTGRES_DB: ${PG_DATABASE:-testdb}
     command:
       - "postgres"
       - "-c"
@@ -84,7 +84,7 @@ services:
       - ./load-generator/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./configs/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d testdb"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-postgres} -d ${PG_DATABASE:-testdb}"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -107,7 +107,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      PG_CONN: "postgres://postgres:postgres@postgres:5432/testdb?sslmode=disable"
+      PG_CONN: "postgres://${PG_USER:-postgres}:${PG_PASSWORD:-postgres}@postgres:5432/${PG_DATABASE:-testdb}?sslmode=disable"
       LOADGEN_DURATION: "${LOADGEN_DURATION:-0}"
       LOADGEN_MIX_BROWSE: "${LOADGEN_MIX_BROWSE:-50}"
       LOADGEN_MIX_CART: "${LOADGEN_MIX_CART:-20}"
@@ -155,9 +155,9 @@ services:
     environment:
       STRESS_PG_HOST: postgres
       STRESS_PG_PORT: "5432"
-      STRESS_PG_USER: postgres
-      STRESS_PG_PASSWORD: postgres
-      STRESS_PG_DATABASE: testdb
+      STRESS_PG_USER: ${PG_USER:-postgres}
+      STRESS_PG_PASSWORD: ${PG_PASSWORD:-postgres}
+      STRESS_PG_DATABASE: ${PG_DATABASE:-testdb}
       STRESS_LOADGEN_URL: "http://load-generator:9090"
       STRESS_SCENARIO_PATH: "/etc/stress/scenario.yaml"
       STRESS_POLL_INTERVAL_SECONDS: "${STRESS_POLL_INTERVAL:-10}"
@@ -196,7 +196,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      PG_CONN: "postgresql://postgres:postgres@postgres:5432/testdb"
+      PG_CONN: "postgresql://${PG_USER:-postgres}:${PG_PASSWORD:-postgres}@postgres:5432/${PG_DATABASE:-testdb}"
       ORM_CONCURRENCY: "${ORM_CONCURRENCY:-5}"
       ORM_DURATION: "${ORM_DURATION:-0}"
       ORM_PAUSE_MIN: "${ORM_PAUSE_MIN:-10}"
@@ -243,9 +243,9 @@ services:
     environment:
       PG_HOST: postgres
       PG_PORT: "5432"
-      PG_USER: postgres
-      PG_DB: testdb
-      PGPASSWORD: postgres
+      PG_USER: ${PG_USER:-postgres}
+      PG_DB: ${PG_DATABASE:-testdb}
+      PGPASSWORD: ${PG_PASSWORD:-postgres}
       PGBENCH_CLIENTS: "${PGBENCH_CLIENTS:-10}"
       PGBENCH_THREADS: "${PGBENCH_THREADS:-2}"
       PGBENCH_DURATION: "${PGBENCH_DURATION:-300}"
@@ -284,9 +284,9 @@ services:
     environment:
       PG_HOST: postgres
       PG_PORT: "5432"
-      PG_USER: postgres
-      PG_PASSWORD: postgres
-      PG_DATABASE: testdb
+      PG_USER: ${PG_USER:-postgres}
+      PG_PASSWORD: ${PG_PASSWORD:-postgres}
+      PG_DATABASE: ${PG_DATABASE:-testdb}
       COMPOSE_PROJECT: pg-stress
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       REPORTS_DIR: /app/reports
@@ -380,9 +380,9 @@ services:
     environment:
       TRUTH_PG_HOST: postgres
       TRUTH_PG_PORT: "5432"
-      TRUTH_PG_USER: postgres
-      TRUTH_PG_PASSWORD: postgres
-      TRUTH_PG_DATABASE: testdb
+      TRUTH_PG_USER: ${PG_USER:-postgres}
+      TRUTH_PG_PASSWORD: ${PG_PASSWORD:-postgres}
+      TRUTH_PG_DATABASE: ${PG_DATABASE:-testdb}
       TRUTH_COLLECTOR_OUTPUT_PATH: /data/collector-output
     volumes:
       - collector-output:/data/collector-output:ro
@@ -416,9 +416,9 @@ services:
     environment:
       PG_HOST: postgres
       PG_PORT: "5432"
-      PG_USER: postgres
-      PG_PASSWORD: postgres
-      PG_DATABASE: testdb
+      PG_USER: ${PG_USER:-postgres}
+      PG_PASSWORD: ${PG_PASSWORD:-postgres}
+      PG_DATABASE: ${PG_DATABASE:-testdb}
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
     volumes:
       - ./out:/app/out

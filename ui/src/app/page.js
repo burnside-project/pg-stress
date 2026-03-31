@@ -115,9 +115,16 @@ export default function Home() {
     finally { setLoading(p => ({ ...p, [key]: false })) }
   }
 
+  const [config, setConfig] = useState(null)
+
   const tables = status?.tables ? Object.keys(status.tables).sort() : []
   const db = status?.database || {}
   const svcs = status?.services || {}
+
+  // Fetch config on mount.
+  useEffect(() => { api("/config").then(setConfig).catch(() => {}) }, [])
+
+  const currentIntensity = config?.intensity?.current || "medium"
 
   return (
     <div style={s.page}>
@@ -141,6 +148,87 @@ export default function Home() {
           {Object.entries(svcs).filter(([,v]) => v.status === "running").map(([k]) => (
             <span key={k} style={s.badge("#16a34a")}>{k}</span>
           ))}
+        </div>
+      </div>
+
+      {/* ═══ SECTION: Database Target & Intensity ═════════════════════ */}
+      <div style={s.section}>
+        <div style={s.sectionHead("#8b5cf6")}>
+          <div style={s.sectionAccent("#8b5cf6")} />
+          <div><span style={s.sectionTitle}>Database Target & Intensity</span><span style={s.sectionSub}>— Which database, how hard to hit it</span></div>
+        </div>
+        <div style={s.grid}>
+          {/* Database Target */}
+          <div style={s.card("#8b5cf6")}>
+            <div style={s.cardTitle}>Database Target</div>
+            <div style={s.cardDesc}>The PostgreSQL instance under test.</div>
+            <table style={s.table}>
+              <tbody>
+                <tr><td style={{ ...s.td, color: "#666", width: 80 }}>Host</td><td style={s.td}>{config?.database?.host || "postgres"} : {config?.database?.port || 5432}</td></tr>
+                <tr><td style={{ ...s.td, color: "#666" }}>User</td><td style={s.td}>{config?.database?.user || "postgres"}</td></tr>
+                <tr><td style={{ ...s.td, color: "#666" }}>Database</td><td style={s.td}>{config?.database?.database || "testdb"}</td></tr>
+                <tr><td style={{ ...s.td, color: "#666" }}>Size</td><td style={s.td}>{db.db_size || "..."}</td></tr>
+              </tbody>
+            </table>
+            <div style={{ fontSize: 11, color: "#444", marginTop: 8 }}>Configured in .env (PG_USER, PG_PASSWORD, PG_DATABASE)</div>
+          </div>
+
+          {/* Intensity Selector */}
+          <div style={s.card("#8b5cf6")}>
+            <div style={s.cardTitle}>Stress Intensity</div>
+            <div style={s.cardDesc}>Controls burst connections, chaos probability, ORM concurrency, and pauses.</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              {[
+                { level: "low", label: "Low", color: "#22c55e", desc: "No chaos, 3-15 conns, long pauses" },
+                { level: "medium", label: "Medium", color: "#f59e0b", desc: "25% chaos, 5-50 conns, moderate" },
+                { level: "high", label: "High", color: "#ef4444", desc: "50% chaos, 15-80 conns, aggressive" },
+              ].map(p => (
+                <button key={p.level}
+                  style={{
+                    ...s.btn, flex: 1, padding: "12px 8px", textAlign: "center",
+                    background: currentIntensity === p.level ? p.color + "22" : "#0a0a0a",
+                    border: currentIntensity === p.level ? `2px solid ${p.color}` : "1px solid #2a2a2a",
+                    color: currentIntensity === p.level ? p.color : "#666",
+                    borderRadius: 8,
+                  }}
+                  onClick={() => act(`intensity-${p.level}`, async () => {
+                    const r = await post("/config/intensity", { level: p.level })
+                    setConfig(await api("/config"))
+                    return r
+                  })}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{p.label}</div>
+                  <div style={{ fontSize: 10, marginTop: 4, opacity: 0.7 }}>{p.desc}</div>
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: "#444" }}>
+              {currentIntensity === "low" && "Safe for small databases and BYOD validation."}
+              {currentIntensity === "medium" && "Good baseline. 25% chaos, moderate burst intensity."}
+              {currentIntensity === "high" && "Designed to find breaking points. May cause deadlocks."}
+              {" "}Restart generators after changing.
+            </div>
+          </div>
+
+          {/* BYOD Import */}
+          <div style={s.card("#8b5cf6")}>
+            <div style={s.cardTitle}>BYOD Import</div>
+            <div style={s.cardDesc}>Restore a pg_dump file from your production database.</div>
+            <div style={s.gap}>
+              <label style={s.label}>Dump file path (on server)</label>
+              <input style={s.input} id="dump-path" defaultValue="/tmp/production.dump" />
+            </div>
+            <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.import}
+              onClick={() => {
+                const path = document.getElementById("dump-path").value
+                act("import", () => post("/import", { dump_path: path }))
+              }}>
+              {loading.import ? "Importing..." : "Restore Dump"}
+            </button>
+            <div style={{ fontSize: 11, color: "#444", marginTop: 8 }}>
+              Upload dump to server first: scp production.dump server:/tmp/
+            </div>
+          </div>
         </div>
       </div>
 

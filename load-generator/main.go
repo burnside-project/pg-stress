@@ -86,16 +86,17 @@ type Stats struct {
 	startTime  time.Time
 }
 
-// Table size constants for random ID generation.
-const (
-	maxCustomers  = 1_000_000
-	maxProducts   = 100_000
-	maxVariants   = 300_000
-	maxOrders     = 5_000_000
-	maxSessions   = 100_000
-	maxPromos     = 1_000
-	maxAddresses  = 2_000_000
-	maxCategories = 500
+// Table size limits for random ID generation.
+// Configurable via environment variables for BYOD databases with different row counts.
+var (
+	maxCustomers  = int64(envInt("LOADGEN_MAX_CUSTOMERS", 1_000_000))
+	maxProducts   = int64(envInt("LOADGEN_MAX_PRODUCTS", 100_000))
+	maxVariants   = int64(envInt("LOADGEN_MAX_VARIANTS", 300_000))
+	maxOrders     = int64(envInt("LOADGEN_MAX_ORDERS", 5_000_000))
+	maxSessions   = int64(envInt("LOADGEN_MAX_SESSIONS", 100_000))
+	maxPromos     = int64(envInt("LOADGEN_MAX_PROMOS", 1_000))
+	maxAddresses  = int64(envInt("LOADGEN_MAX_ADDRESSES", 2_000_000))
+	maxCategories = int64(envInt("LOADGEN_MAX_CATEGORIES", 500))
 )
 
 func loadConfig() Config {
@@ -446,7 +447,7 @@ func doBrowse(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 func browseCategory(ctx context.Context, pool *pgxpool.Pool) error {
-	catID := rand.IntN(maxCategories) + 1
+	catID := rand.Int64N(maxCategories) + 1
 	offset := rand.IntN(20) * 48
 	rows, err := pool.Query(ctx,
 		`SELECT p.id, p.name, p.base_price, p.status,

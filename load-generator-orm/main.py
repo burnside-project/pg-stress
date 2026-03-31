@@ -49,14 +49,14 @@ log = logging.getLogger("orm-load")
 
 # ── Table size constants (match Go load generator) ───────────────────────
 
-MAX_CUSTOMERS = 1_000_000
-MAX_PRODUCTS = 100_000
-MAX_VARIANTS = 300_000
-MAX_ORDERS = 5_000_000
-MAX_SESSIONS = 100_000
-MAX_PROMOS = 1_000
-MAX_ADDRESSES = 2_000_000
-MAX_CATEGORIES = 500
+MAX_CUSTOMERS = env_int("LOADGEN_MAX_CUSTOMERS", 1_000_000)
+MAX_PRODUCTS = env_int("LOADGEN_MAX_PRODUCTS", 100_000)
+MAX_VARIANTS = env_int("LOADGEN_MAX_VARIANTS", 300_000)
+MAX_ORDERS = env_int("LOADGEN_MAX_ORDERS", 5_000_000)
+MAX_SESSIONS = env_int("LOADGEN_MAX_SESSIONS", 100_000)
+MAX_PROMOS = env_int("LOADGEN_MAX_PROMOS", 1_000)
+MAX_ADDRESSES = env_int("LOADGEN_MAX_ADDRESSES", 2_000_000)
+MAX_CATEGORIES = env_int("LOADGEN_MAX_CATEGORIES", 500)
 
 
 # ── Configuration ────────────────────────────────────────────────────────
