@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  PostgreSQL OLTP stress testing &rarr; ORM fingerprinting &rarr; pgbench comparison. One compose stack.
+  Dump production PostgreSQL &rarr; stress test with hypothetical scenarios &rarr; Claude-powered advisory. One-off, local-only.
 </p>
 
 <p align="center">
@@ -47,38 +47,89 @@ query fixes, and capacity predictions.
 
 They're complementary -- pg-collector tells you what IS happening, pg-stress tells you what WILL happen.
 
-## How does it work?
+## Three Use Cases
 
-pg-stress runs three independent load generators against a shared PostgreSQL 15 instance,
-while a monitoring dashboard and optional truth-service observe the results:
+### 1. BYOD — Bring Your Own Data (most common)
 
-| Generator | Language | Query Style | Unique Fingerprints |
-|-----------|----------|-------------|---------------------|
-| **Raw SQL** | Go 1.23 + pgx/v5 | Hand-written SQL with explicit JOINs | ~30-40 `queryid` |
-| **ORM** | Python 3.12 + SQLAlchemy 2.0 | N+1, eager load, EXISTS, bulk INSERT | ~50-100+ `queryid` |
-| **pgbench** | PostgreSQL 15 built-in | TPC-B + custom e-commerce scripts | ~5-15 `queryid` |
+Dump production, restore on test server, bring your own queries, stress test.
 
-All three share the same 18-table e-commerce schema (~30M rows, ~10 GB seeded data):
-
-```
-Load Generator (Go)  ──┐
-                        ├──▶  PostgreSQL 15  ◀──  Dashboard (polling pg_stat_*)
-ORM Generator (Py)   ──┤         ▲
-                        │         │
-pgbench Runner       ──┘    pg-collector  ──▶  JSONL  ──▶  Truth Service
+```bash
+make import DUMP=/path/to/production.dump    # Restore + ANALYZE + baseline
+make stress CLIENTS=50 DURATION=600          # Run your queries under load
+make analyze                                 # Claude advisory report
 ```
 
-## Quick comparison
+### 2. WHAT IF — Inject Hypothetical Stress
+
+On top of real production data, test growth scenarios:
+
+```bash
+make inject TABLE=orders ROWS=10000000       # "What if 10M more orders?"
+make bulk-update TABLE=orders \
+  SET="status='archived'" BATCH=100000       # "What if we archive 20M rows?"
+make ladder STEPS="10,25,50,100,200"         # Find the connection breaking point
+make analyze-tuning                          # Get PostgreSQL knob recommendations
+```
+
+### 3. SEED + STRESS — No Production Data
+
+Pick a built-in workload profile, seed synthetic data, then stress:
+
+```bash
+make seed PROFILE=ecommerce                  # 18 tables, ~30M rows, ~10 GB
+make stress CLIENTS=50 DURATION=600
+make analyze
+```
+
+| Profile | Tables | Seed Size | Description |
+|---------|--------|-----------|-------------|
+| `ecommerce` | 18 | ~30M rows / 10 GB | Orders, products, carts, payments, reviews |
+| `crm` | 12 | ~20M rows / 6 GB | Contacts, accounts, deals, activities |
+| `saas-multi-tenant` | 15 | ~25M rows / 8 GB | Tenants, users, resources, audit |
+| `iot-timeseries` | 6 | ~50M rows / 12 GB | Devices, readings, alerts |
+| `content-platform` | 14 | ~35M rows / 9 GB | Users, posts, comments, feeds |
+
+## How It Works
+
+```
+YOUR DATABASE                 TEST SERVER                    CLAUDE
+─────────────                 ───────────                    ──────
+
+pg_dump ────────────────────▶ 1. IMPORT
+                                 pg_restore + ANALYZE
+                                 Snapshot baseline
+
+                              2. WHAT IF (optional)
+                                 Inject rows, bulk update
+                                 Open N connections
+                                 Run growth ladder
+
+                              3. STRESS
+                                 Your queries + built-in generators
+                                 Duration: 10-30 min
+
+                              4. CAPTURE
+                                 pg_stat_statements (full)
+                                 Before/after deltas
+                                 Anomalies flagged
+
+                              5. ADVISE ────────────────▶  Tuning: ALTER SYSTEM commands
+                                 Context bundle               Query fixes + indexes
+                                 to Claude                    Capacity predictions
+                                                              Breaking point analysis
+```
+
+## Quick Comparison
 
 | | pg-stress | pgbench alone | k6 + SQL | Custom scripts |
 |---|---|---|---|---|
-| ORM query patterns | N+1, eager load, selectin, EXISTS | No | Manual only | Manual only |
-| Raw SQL OLTP | 25+ e-commerce operations | TPC-B only | Custom | Custom |
-| pgbench baseline | Side-by-side comparison | Yes | No | No |
+| Bring your own data | Dump + restore + stress | Manual setup | Manual | Manual |
+| WHAT IF scenarios | Row injection, connection ladder | No | No | Manual |
+| AI advisory | Claude-powered, LLM-optimized output | No | No | No |
+| ORM query patterns | N+1, eager load, EXISTS | No | Manual only | Manual only |
+| Built-in workload profiles | 5 profiles (ecommerce, CRM, SaaS, IoT, content) | TPC-B only | Custom | Custom |
 | Real-time dashboard | Built-in (Chart.js) | No | Grafana | No |
-| Collector validation | Truth-service w/ tolerance assertions | No | No | No |
 | Chaos injection | 6 patterns (deadlocks, flash sales, etc.) | No | Limited | Manual |
-| Safety auto-pruning | Append-only table limits + auto-delete | No | No | No |
 | Infrastructure | `docker compose up` | CLI | Docker + config | Varies |
 
 ## Profiles
@@ -93,88 +144,81 @@ pg-stress uses Docker Compose profiles to control which services run:
 | `collector` | + pg-collector + truth-service | + 8080, 8001 | Metric accuracy verification |
 | `full` | Everything | All above | Complete validation suite |
 
-## Quickstart (2 minutes)
+## Quickstart
 
-**1. Clone and start** -- seeds ~30M rows on first run (~5 minutes):
+### Path A: I have production data (BYOD)
 
 ```console
 $ git clone https://github.com/dataalgebra-engineering/pg-stress.git
 $ cd pg-stress
-$ make up
+$ make import DUMP=/path/to/production.dump   # Restore + ANALYZE + baseline snapshot
+$ make stress CLIENTS=50 DURATION=600         # Stress test with 50 connections for 10 min
+$ make analyze                                 # Claude advisory → out/analysis-*/
 ```
 
-```
-  Dashboard:  http://localhost:8000
-  Postgres:   localhost:5434
-  Load Gen:   http://localhost:9090/healthz
-  Scenario:   default
-```
-
-**2. Add ORM generator** -- SQLAlchemy queries alongside raw SQL:
+### Path B: I have production data + a hypothesis (WHAT IF)
 
 ```console
-$ make up-orm
+$ make import DUMP=/path/to/production.dump
+$ make inject TABLE=orders ROWS=10000000       # "What if 10M more orders?"
+$ make ladder STEPS="10,25,50,100,200"         # Find the connection breaking point
+$ make analyze-tuning                          # Get knob recommendations
 ```
 
-**3. Run pgbench comparison** -- TPC-B + custom e-commerce scripts:
+### Path C: I don't have production data (Seed + Stress)
 
 ```console
-$ make up-bench
+$ make up                                      # Seeds ecommerce profile (~30M rows)
+$ make up-full                                 # All generators + dashboard + collector
+$ make analyze                                 # Claude advisory
 ```
 
-**4. Start everything** -- all generators + collector + truth-service:
-
-```console
-$ make up-full
-```
-
-**5. Check health** -- verify all services are running:
-
-```console
-$ make healthz
-```
-
-**6. View query fingerprints** -- top queries by execution time:
-
-```console
-$ make pg-stat
-```
-
-**7. Collect report** -- full snapshot of database state:
-
-```console
-$ make report
-```
-
-**8. AI analysis** -- Claude-powered performance recommendations:
+### After any path — AI analysis
 
 ```console
 $ export ANTHROPIC_API_KEY=sk-ant-...
-$ make analyze                    # Full analysis
-$ make analyze-tuning             # PostgreSQL knob tuning
-$ make analyze-queries            # Query optimization + N+1 detection
-$ make analyze-capacity           # Capacity predictions
+$ make analyze                                 # Full report
+$ make analyze-tuning                          # PostgreSQL parameter tuning only
+$ make analyze-queries                         # Query optimization + N+1 detection
+$ make analyze-capacity                        # Growth projections + capacity limits
 ```
 
-## Scenarios
+## WHAT IF Scenarios
 
-Three pre-configured load profiles control intensity, chaos, and safety limits:
+The core differentiator. Inject hypothetical stress on top of real data:
+
+| Command | What it tests |
+|---------|---------------|
+| `make inject TABLE=X ROWS=N` | "What if this table grows by N rows?" |
+| `make bulk-update TABLE=X SET="..." BATCH=N` | "What if we update N rows?" |
+| `make connections N=100 DURATION=300` | "What if we get 100 concurrent connections?" |
+| `make ladder STEPS="10,25,50,100,200"` | "At what connection count does it break?" |
+
+Growth ladder output (fed to Claude):
+
+```
+Phase   Conns  TPS    Cache    p99 Latency  Deadlocks  Temp Files
+─────   ─────  ───    ─────    ───────────  ─────────  ──────────
+1x      10     2340   0.998    45ms         0          0
+2.5x    25     4200   0.994    67ms         0          0
+5x      50     5100   0.971    189ms        2          0
+10x     100    4800   0.923    487ms        14         847       ← BREAKING
+20x     200    2100   0.841    2340ms       89         4200      ← DEGRADED
+```
+
+## Stress Intensity Profiles
+
+For seed-based testing (Use Case 3), three intensity levels:
 
 | | Gentle | Default | Heavy |
 |---|---|---|---|
-| **Browse / Cart / Checkout** | 60 / 15 / 3% | 50 / 20 / 5% | 40 / 25 / 10% |
 | **Burst connections** | 3 / 8 / 15 | 5 / 20 / 50 | 15 / 40 / 80 |
-| **Burst weights** | 70 / 25 / 5 | 50 / 35 / 15 | 20 / 40 / 40 |
-| **Chaos injection** | Disabled | 25% probability | 50% probability |
+| **Chaos injection** | Disabled | 25% | 50% |
 | **Pause between bursts** | 30-120s | 20-90s | 5-20s |
 | **ORM concurrency** | 2 threads | 5 threads | 15 threads |
-| **ORM pause** | 50-200ms | 10-50ms | 5-20ms |
-| **Max database size** | 15 GB | 20 GB | 30 GB |
-| **Table row limits** | 500K-2M | 1M-5M | 1M-5M |
 
 ```console
 $ SCENARIO=heavy make up-full
-$ SCENARIO=gentle make up-orm
 ```
 
 ## Raw SQL Operations (Go + pgx)
