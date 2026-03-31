@@ -17,10 +17,24 @@ const s = {
   stat: { textAlign: "center", minWidth: 80 },
   statVal: { fontSize: 22, fontWeight: 700, color: "#fff" },
   statLbl: { fontSize: 10, color: "#555", textTransform: "uppercase", letterSpacing: 1 },
-  section: { marginBottom: 32 },
-  sectionHead: { fontSize: 13, fontWeight: 600, color: "#555", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, paddingBottom: 8, borderBottom: "1px solid #1a1a1a" },
+  section: { marginBottom: 40 },
+  sectionHead: (accent) => ({
+    display: "flex", alignItems: "center", gap: 10,
+    marginBottom: 16, paddingBottom: 10,
+    borderBottom: `2px solid ${accent}33`,
+  }),
+  sectionAccent: (accent) => ({
+    width: 4, height: 28, borderRadius: 2, background: accent,
+  }),
+  sectionTitle: {
+    fontSize: 15, fontWeight: 700, color: "#fff", letterSpacing: 0.5,
+  },
+  sectionSub: {
+    fontSize: 11, color: "#555", fontWeight: 400, marginLeft: 4,
+  },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12 },
-  card: { background: "#111", border: "1px solid #1e1e1e", borderRadius: 8, padding: 16 },
+  card: (accent) => ({ background: "#111", border: "1px solid #1e1e1e", borderLeft: `3px solid ${accent || "#1e1e1e"}`, borderRadius: 8, padding: 16 }),
+  cardPlain: { background: "#111", border: "1px solid #1e1e1e", borderRadius: 8, padding: 16 },
   cardWide: { background: "#111", border: "1px solid #1e1e1e", borderRadius: 8, padding: 16, gridColumn: "1 / -1" },
   cardTitle: { fontSize: 14, fontWeight: 600, color: "#fff", marginBottom: 4 },
   cardDesc: { fontSize: 12, color: "#555", marginBottom: 12 },
@@ -132,11 +146,14 @@ export default function Home() {
 
       {/* ═══ SECTION: Operations (Data Volume) ════════════════════════ */}
       <div style={s.section}>
-        <div style={s.sectionHead}>Operations — Data Volume</div>
+        <div style={s.sectionHead("#f59e0b")}>
+          <div style={s.sectionAccent("#f59e0b")} />
+          <div><span style={s.sectionTitle}>Data Operations</span><span style={s.sectionSub}>— Inject rows, bulk update, simulate table growth</span></div>
+        </div>
         <div style={s.grid}>
 
           {/* Inject Rows */}
-          <div style={s.card}>
+          <div style={s.card("#f59e0b")}>
             <div style={s.cardTitle}>Inject Rows</div>
             <div style={s.cardDesc}>Simulate table growth. "What if orders grows by 5M rows?"</div>
             <div style={s.gap}>
@@ -156,7 +173,7 @@ export default function Home() {
           </div>
 
           {/* Bulk Update */}
-          <div style={s.card}>
+          <div style={s.card("#f59e0b")}>
             <div style={s.cardTitle}>Bulk Update</div>
             <div style={s.cardDesc}>Mass UPDATE in batches. "What if we archive old orders?"</div>
             <div style={s.gap}>
@@ -184,7 +201,7 @@ export default function Home() {
           </div>
 
           {/* Tables */}
-          <div style={s.card}>
+          <div style={s.card("#f59e0b")}>
             <div style={s.cardTitle}>Table Stats</div>
             <div style={s.cardDesc}>Current row counts, dead tuples, and sizes.</div>
             <div style={{ maxHeight: 280, overflow: "auto" }}>
@@ -209,11 +226,14 @@ export default function Home() {
 
       {/* ═══ SECTION: Transactions & Connections ══════════════════════ */}
       <div style={s.section}>
-        <div style={s.sectionHead}>Transactions & Connections</div>
+        <div style={s.sectionHead("#3b82f6")}>
+          <div style={s.sectionAccent("#3b82f6")} />
+          <div><span style={s.sectionTitle}>Transactions & Connections</span><span style={s.sectionSub}>— Stress concurrency, find breaking points, load generators</span></div>
+        </div>
         <div style={s.grid}>
 
           {/* Connection Pressure */}
-          <div style={s.card}>
+          <div style={s.card("#3b82f6")}>
             <div style={s.cardTitle}>Connection Pressure</div>
             <div style={s.cardDesc}>Open N concurrent connections and sustain for duration.</div>
             <div style={s.row}>
@@ -241,7 +261,7 @@ export default function Home() {
           </div>
 
           {/* Growth Ladder */}
-          <div style={s.card}>
+          <div style={s.card("#3b82f6")}>
             <div style={s.cardTitle}>Growth Ladder</div>
             <div style={s.cardDesc}>Ramp connections step-by-step to find the breaking point.</div>
             <div style={s.gap}>
@@ -271,7 +291,7 @@ export default function Home() {
           </div>
 
           {/* Generators */}
-          <div style={s.card}>
+          <div style={s.card("#3b82f6")}>
             <div style={s.cardTitle}>Load Generators</div>
             <div style={s.cardDesc}>Start additional workload sources alongside the raw SQL generator.</div>
             <table style={s.table}>
@@ -305,11 +325,14 @@ export default function Home() {
 
       {/* ═══ SECTION: Analysis & Reports ══════════════════════════════ */}
       <div style={s.section}>
-        <div style={s.sectionHead}>Analysis & Reports</div>
+        <div style={s.sectionHead("#10b981")}>
+          <div style={s.sectionAccent("#10b981")} />
+          <div><span style={s.sectionTitle}>Analysis & Reports</span><span style={s.sectionSub}>— AI-powered tuning advice, capacity predictions, saved results</span></div>
+        </div>
         <div style={s.grid}>
 
           {/* AI Analyzer */}
-          <div style={s.card}>
+          <div style={s.card("#10b981")}>
             <div style={s.cardTitle}>AI Analyzer</div>
             <div style={s.cardDesc}>Send PostgreSQL diagnostics to Claude for tuning advice and predictions.</div>
             <div style={s.gap}>
@@ -334,7 +357,7 @@ export default function Home() {
           </div>
 
           {/* Jobs */}
-          <div style={s.card}>
+          <div style={s.card("#10b981")}>
             <div style={s.cardTitle}>Background Jobs</div>
             <div style={s.cardDesc}>Long-running operations report status here.</div>
             {jobs.length === 0 ? (
@@ -359,7 +382,7 @@ export default function Home() {
           </div>
 
           {/* Reports */}
-          <div style={s.card}>
+          <div style={s.card("#10b981")}>
             <div style={s.cardTitle}>Saved Reports</div>
             <div style={s.cardDesc}>Ladder results and AI analysis reports.</div>
             <button style={{ ...s.btn, ...s.btnGhost, ...s.btnFull }}
@@ -389,8 +412,9 @@ export default function Home() {
       {/* ═══ Activity Log ═════════════════════════════════════════════ */}
       {logs.length > 0 && (
         <div style={s.section}>
-          <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
-            <div style={{ ...s.sectionHead, marginBottom: 0, borderBottom: "none", flex: 1 }}>Activity Log</div>
+          <div style={{ ...s.sectionHead("#6366f1"), marginBottom: 12 }}>
+            <div style={s.sectionAccent("#6366f1")} />
+            <div style={{ flex: 1 }}><span style={s.sectionTitle}>Activity Log</span></div>
             <button style={{ ...s.btn, ...s.btnGhost, fontSize: 11 }} onClick={() => setLogs([])}>Clear</button>
           </div>
           <div style={s.mono}>{logs.join("\n")}</div>
