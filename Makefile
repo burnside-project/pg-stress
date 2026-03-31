@@ -123,6 +123,35 @@ verify: ## Run all truth-service verifications
 	@curl -s http://localhost:8001/verify/replication | python3 -m json.tool || echo "FAILED"
 
 # ═══════════════════════════════════════════════════════════════════════════
+# AI Analyzer — Claude-powered analysis — profile: analyze
+# ═══════════════════════════════════════════════════════════════════════════
+
+.PHONY: analyze
+analyze: ## AI analysis of running stack (requires ANTHROPIC_API_KEY)
+	@pip install -q anthropic psycopg2-binary rich 2>/dev/null
+	python analyzer/analyze.py --save
+
+.PHONY: analyze-tuning
+analyze-tuning: ## AI analysis focused on PostgreSQL parameter tuning
+	@pip install -q anthropic psycopg2-binary rich 2>/dev/null
+	python analyzer/analyze.py --focus tuning --save
+
+.PHONY: analyze-queries
+analyze-queries: ## AI analysis focused on query optimization
+	@pip install -q anthropic psycopg2-binary rich 2>/dev/null
+	python analyzer/analyze.py --focus queries --save
+
+.PHONY: analyze-capacity
+analyze-capacity: ## AI analysis focused on capacity predictions
+	@pip install -q anthropic psycopg2-binary rich 2>/dev/null
+	python analyzer/analyze.py --focus capacity --save
+
+.PHONY: analyze-collect
+analyze-collect: ## Collect diagnostic data only (no AI, no API key needed)
+	@pip install -q psycopg2-binary 2>/dev/null
+	python analyzer/collect.py | python3 -m json.tool
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Full Stack — all profiles
 # ═══════════════════════════════════════════════════════════════════════════
 

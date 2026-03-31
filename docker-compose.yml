@@ -350,6 +350,35 @@ services:
         max-size: "25m"
         max-file: "3"
 
+  # ════════════════════════════════════════════════════════════════════════
+  # AI Analyzer — Claude-powered test analysis — profile: analyze
+  # ════════════════════════════════════════════════════════════════════════
+
+  analyzer:
+    build:
+      context: ./analyzer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_USER: postgres
+      PG_PASSWORD: postgres
+      PG_DATABASE: testdb
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+    volumes:
+      - ./out:/app/out
+    networks:
+      - stress-net
+    profiles:
+      - analyze
+      - full
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
 networks:
   stress-net:
     driver: bridge

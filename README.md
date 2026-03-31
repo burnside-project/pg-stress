@@ -126,6 +126,16 @@ $ make pg-stat
 $ make report
 ```
 
+**8. AI analysis** -- Claude-powered performance recommendations:
+
+```console
+$ export ANTHROPIC_API_KEY=sk-ant-...
+$ make analyze                    # Full analysis
+$ make analyze-tuning             # PostgreSQL knob tuning
+$ make analyze-queries            # Query optimization + N+1 detection
+$ make analyze-capacity           # Capacity predictions
+```
+
 ## Scenarios
 
 Three pre-configured load profiles control intensity, chaos, and safety limits:
@@ -318,6 +328,50 @@ search_log (append-only)    audit_log (append-only)
 
 **Key indexes:** unique constraints on email, slug, SKU, token, promo code; FK indexes on all foreign keys; partial index on low stock (`qty_available < 10`); trigram GIN index on product names (`gin_trgm_ops`); composite indexes for common query patterns.
 
+## AI Analyzer (Claude-Powered)
+
+After running a stress test, the analyzer collects 10 diagnostic datasets from PostgreSQL
+and sends them to Claude for expert-level analysis and recommendations:
+
+**Data Collected:**
+- Top 50 queries by total execution time (with cache ratios, temp usage, latency stats)
+- Queries with worst cache hit ratios (< 0.95)
+- Queries spilling to temp files
+- N+1 candidates (high-call-count simple SELECTs with low rows/call)
+- Database-level stats (TPS, cache ratio, deadlocks, temp files)
+- Table stats (live/dead rows, seq vs idx scan ratios, vacuum state)
+- Index stats + unused index detection
+- Connection state breakdown
+- Lock state and wait events
+- Current PostgreSQL configuration (30+ tuning-relevant settings)
+
+**Analysis Modes:**
+
+| Command | Focus | What you get |
+|---------|-------|--------------|
+| `make analyze` | Full | Health score, top findings, all recommendations |
+| `make analyze-tuning` | PG knobs | Parameter-by-parameter tuning with ALTER SYSTEM commands |
+| `make analyze-queries` | Queries | N+1 detection, ORM vs raw SQL attribution, index suggestions |
+| `make analyze-capacity` | Capacity | Growth projections, resource headroom, scaling recommendations |
+| `make analyze-collect` | Data only | Raw diagnostic JSON (no AI, no API key needed) |
+
+**Example output from `make analyze-tuning`:**
+
+```
+┌─────────────────────┬─────────┬─────────────┬─────────────────────────────┐
+│ Parameter           │ Current │ Recommended │ Rationale                   │
+├─────────────────────┼─────────┼─────────────┼─────────────────────────────┤
+│ work_mem            │ 16MB    │ 64MB        │ 847 temp files from         │
+│                     │         │             │ reporting aggregation query  │
+│ shared_buffers      │ 256MB   │ 512MB       │ Cache hit ratio 0.94 on     │
+│                     │         │             │ order_items table scans      │
+│ effective_cache_size│ 1GB     │ 2GB         │ Planner underestimates      │
+│                     │         │             │ index-only scan viability    │
+└─────────────────────┴─────────┴─────────────┴─────────────────────────────┘
+```
+
+Reports saved to `out/analysis-YYYYMMDD-HHMMSS/` with both raw data (JSON) and analysis (Markdown).
+
 ## PostgreSQL Configuration
 
 Production-tuned for OLTP stress testing with full observability:
@@ -381,6 +435,11 @@ pg-stress/
 │   ├── app/                     # JSONL reader, PG client, report generator
 │   └── Dockerfile
 │
+├── analyzer/                    # Claude-powered AI analysis
+│   ├── collect.py               # PostgreSQL diagnostic data collector
+│   ├── analyze.py               # Claude API integration + report generation
+│   └── Dockerfile
+│
 ├── scenarios/                   # 3 load profiles (gentle / default / heavy)
 ├── configs/postgres/            # postgresql.conf + pg_hba.conf
 ├── configs/collector/           # pg-collector JSONL config
@@ -418,6 +477,11 @@ pg-stress/
 | `make healthz` | Check health of all services |
 | `make report` | Collect comprehensive report locally |
 | `make report-remote` | Collect report from remote server |
+| `make analyze` | AI analysis of running stack (full report) |
+| `make analyze-tuning` | AI analysis focused on PG parameter tuning |
+| `make analyze-queries` | AI analysis focused on query optimization |
+| `make analyze-capacity` | AI analysis focused on capacity predictions |
+| `make analyze-collect` | Collect diagnostic data only (no AI) |
 | `make deploy` | Deploy to remote server (default: ssh 4) |
 | `make deploy-full` | Deploy full stack to remote |
 | `make clean` | Stop everything, remove volumes and output |
@@ -526,6 +590,16 @@ pg-stress/
 - [x] Resource limits on all containers (memory caps)
 - [x] JSON-file logging with rotation (max 25-50MB x 3 files per service)
 - [x] Health checks on all services
+
+**AI Analyzer (Claude-Powered)**
+- [x] Collects 10 diagnostic datasets from PostgreSQL (top queries, cache misses, temp spills, N+1 candidates, table/index stats, locks, wait events, PG config)
+- [x] Full analysis mode: health score, top findings, query optimization, PG tuning, capacity predictions
+- [x] Tuning focus: parameter-by-parameter recommendations with ALTER SYSTEM commands
+- [x] Query focus: N+1 detection, ORM vs raw SQL attribution, missing index suggestions with CREATE INDEX statements
+- [x] Capacity focus: growth projections per table, resource headroom, scaling thresholds
+- [x] Collect-only mode (no API key required) for raw diagnostic JSON export
+- [x] Reports saved as Markdown + JSON to out/ directory
+- [x] Powered by Anthropic Claude API (configurable model)
 
 **CI/CD**
 - [x] GitHub Actions CI: build all 5 Docker images, lint Go (vet + build), lint Python (ruff), test truth-service, validate compose files, shellcheck scripts
