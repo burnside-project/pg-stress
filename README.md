@@ -8,13 +8,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dataalgebra-engineering/pg-stress/actions/workflows/ci.yml"><img src="https://github.com/dataalgebra-engineering/pg-stress/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="https://github.com/dataalgebra-engineering/pg-stress/releases"><img src="https://img.shields.io/github/v/release/dataalgebra-engineering/pg-stress" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
-  <a href="https://img.shields.io/github/go-mod/go-version/dataalgebra-engineering/pg-stress?filename=load-generator/go.mod"><img src="https://img.shields.io/github/go-mod/go-version/dataalgebra-engineering/pg-stress?filename=load-generator/go.mod" alt="Go"></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.12-blue" alt="Python"></a>
-  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-15-336791" alt="PostgreSQL"></a>
-  <a href="https://github.com/dataalgebra-engineering/pg-stress/stargazers"><img src="https://img.shields.io/github/stars/dataalgebra-engineering/pg-stress?style=social" alt="Stars"></a>
+  <a href="https://github.com/dataalgebra-engineering/pg-stress"><img src="https://img.shields.io/github/downloads/dataalgebra-engineering/pg-stress/total" alt="Downloads"></a>
+  <a href="https://claude.ai"><img src="https://img.shields.io/badge/AI%20Powered-Claude%20Code-blueviolet" alt="AI Powered"></a>
 </p>
 
 ## Why pg-stress?
