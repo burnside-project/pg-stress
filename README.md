@@ -631,32 +631,19 @@ pg-stress/
 
 | Doc | Description |
 |-----|-------------|
-| [pgbench Comparison Strategy](docs/pgbench-comparison.md) | Three-workload fingerprint validation methodology |
-| [Environment Reference](.env.example) | 50+ configurable environment variables |
-| [Scenarios](scenarios/) | Load profile definitions (gentle / default / heavy) |
-
-## Architecture
-
-pg-stress is designed around a shared-database architecture where multiple independent
-load generators exercise different query patterns against a single PostgreSQL instance.
-A monitoring layer (dashboard + optional collector) observes `pg_stat_*` views to measure
-the impact. The truth-service provides ground-truth verification by comparing collector
-output against direct PostgreSQL queries.
-
-The key architectural decision is **workload isolation by source, not by database** --
-all generators share the same schema and data, which is exactly how production applications
-behave. This forces the monitoring stack to differentiate workloads by query fingerprint
-rather than connection metadata.
+| [How It Works](docs/01-how-it-works.md) | Five-phase workflow, pg-stress vs pg-collector, context bundle format |
+| [Scenarios](docs/02-scenarios.md) | Traffic multipliers, row injection, schema change simulation |
+| [AI Analyzer](docs/03-ai-analyzer.md) | Claude integration, analysis modes, what gets collected |
+| [Configuration](docs/04-configuration.md) | All environment variables by service |
+| [Schema](docs/05-schema.md) | 18-table e-commerce schema, indexes, append-only table limits |
 
 ## Relationship to Burnside Project
 
-pg-stress is part of the [Burnside Project](https://github.com/burnside-project) ecosystem:
-
 | Project | Role |
 |---------|------|
-| [pg-collector](https://github.com/burnside-project/pg-collector) | PostgreSQL metrics agent (what pg-stress validates) |
+| [pg-collector](https://github.com/burnside-project/pg-collector) | Ongoing production telemetry ("what IS happening") |
 | [pg-warehouse](https://github.com/burnside-project/pg-warehouse) | Local-first analytical warehouse (PostgreSQL &rarr; DuckDB) |
-| **pg-stress** | OLTP stress testing + collector validation (this repo) |
+| **pg-stress** | One-off stress test &rarr; LLM advisory ("what WILL happen") |
 
 ## Community
 
