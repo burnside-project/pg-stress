@@ -819,31 +819,45 @@ def set_intensity(req: IntensityRequest):
         for k, v in sorted(existing.items()):
             f.write(f"{k}={v}\n")
 
-    # Restart the load generator so it picks up new env vars.
+    # Recreate load generators with new env vars via Docker SDK.
+    # We can't use `docker compose` from inside the container, so we
+    # stop the old container, clone its config with updated env, and start a new one.
     restarted = []
-    try:
-        result = subprocess.run(
-            ["docker", "compose", "up", "-d", "--force-recreate", "load-generator"],
-            cwd="/app/project",
-            capture_output=True, text=True, timeout=60,
-        )
-        restarted.append("load-generator")
-        log.info("intensity: restarted load-generator for %s", req.level)
-    except Exception as e:
-        log.error("intensity: failed to restart load-generator: %s", e)
 
-    # Restart ORM generator if it's running.
-    orm = find_container("load-generator-orm")
-    if orm and orm.status == "running":
+    for svc_name in ["load-generator", "load-generator-orm"]:
+        c = find_container(svc_name)
+        if not c or c.status != "running":
+            continue
         try:
-            subprocess.run(
-                ["docker", "compose", "--profile", "orm", "up", "-d", "--force-recreate", "load-generator-orm"],
-                cwd="/app/project",
-                capture_output=True, text=True, timeout=60,
+            # Read current container config.
+            img = c.image.id
+            net = list(c.attrs["NetworkSettings"]["Networks"].keys())
+            current_env = c.attrs["Config"]["Env"] or []
+
+            # Build new env: keep non-LOADGEN/ORM/PGBENCH/STRESS vars, add preset vars.
+            prefix = ("LOADGEN_", "ORM_", "PGBENCH_", "STRESS_LIMIT_", "STRESS_MAX_")
+            new_env = [e for e in current_env if not any(e.startswith(p) for p in prefix)]
+            for k, v in applied.items():
+                new_env.append(f"{k}={v}")
+
+            # Stop and remove old container.
+            old_name = c.name
+            c.stop(timeout=10)
+            c.remove()
+
+            # Start new container with same image, network, and updated env.
+            new_c = docker_client.containers.run(
+                img,
+                name=old_name,
+                environment=new_env,
+                network=net[0] if net else "pg-stress_stress-net",
+                detach=True,
+                restart_policy={"Name": "unless-stopped"},
             )
-            restarted.append("load-generator-orm")
-        except Exception:
-            pass
+            restarted.append(svc_name)
+            log.info("intensity: recreated %s with %s env vars for %s", svc_name, len(new_env), req.level)
+        except Exception as e:
+            log.error("intensity: failed to recreate %s: %s", svc_name, e)
 
     return {
         "status": "applied_and_restarted",
