@@ -15,17 +15,37 @@
 
 ## Why pg-stress?
 
-Validating a PostgreSQL monitoring agent means running realistic workloads -- not just
-`pgbench` TPC-B. pg-stress gives you three load generators hitting the same database
-simultaneously, so you can verify that your collector correctly fingerprints raw SQL,
-ORM-generated queries, and standard benchmarks. Everything runs in Docker Compose --
-no cloud, no Kubernetes, no external dependencies.
+You have a production PostgreSQL database. You need answers:
+
+- *"What happens if traffic grows 50%?"*
+- *"Which queries break first at 3x load?"*
+- *"What PostgreSQL knobs should we turn before Black Friday?"*
+- *"Where are the hidden N+1 patterns the ORM is generating?"*
+
+pg-stress answers these by running **one-off, local-only stress tests** against a copy
+of your production data, then feeding the complete results to Claude for expert advisory.
+No cloud, no Kubernetes -- dump your data onto a test server, run a scenario, get a report.
 
 ## What does it solve?
 
-A local-first stress testing platform for validating PostgreSQL observability tools.
-Best for teams building or evaluating `pg_stat_statements`-based collectors that need
-to differentiate query sources, detect N+1 patterns, and measure accuracy under load.
+A local-first stress testing platform that produces **LLM-optimized PostgreSQL context**.
+Dump production data onto a disposable test server, simulate hypothetical growth scenarios
+(10% / 50% / 3x traffic), capture everything, and ask Claude for tuning advice,
+query fixes, and capacity predictions.
+
+## pg-stress vs pg-collector
+
+| | pg-stress | pg-collector |
+|---|---|---|
+| **When** | One-off, before a change or event | Always running |
+| **Where** | Test server (local, disposable) | Production |
+| **Data** | Production dump + synthetic load | Live production queries |
+| **Purpose** | "What if?" predictions | "What is?" observation |
+| **Output** | LLM context bundle &rarr; advisory report | Metric time-series &rarr; dashboards |
+| **Lifecycle** | Run, get report, tear down | Continuous telemetry |
+| **Risk** | Zero (test server) | None (read-only observer) |
+
+They're complementary -- pg-collector tells you what IS happening, pg-stress tells you what WILL happen.
 
 ## How does it work?
 
