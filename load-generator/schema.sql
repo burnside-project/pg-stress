@@ -425,7 +425,7 @@ SELECT
     (ARRAY['credit_card','debit_card','paypal','apple_pay','bank_transfer'])[1 + (random()*4)::int],
     (ARRAY['pending','captured','settled','refunded','failed'])[1 + (random()*4)::int],
     (10 + random() * 500)::numeric(12,2),
-    'txn_' || encode(g::text || random()::text),
+    'txn_' || md5(g::text || random()::text),
     now() - (random() * interval '365 days'),
     CASE WHEN random() < 0.7 THEN now() - (random() * interval '360 days') ELSE NULL END
 FROM generate_series(1, 5000000) g;
@@ -436,7 +436,7 @@ INSERT INTO shipments (order_id, carrier, tracking_number, status, shipped_at, d
 SELECT
     g,
     (ARRAY['ups','fedex','usps','dhl'])[1 + (random()*3)::int],
-    upper(encode(g::text || random()::text)),
+    upper(md5(g::text || random()::text)),
     (ARRAY['label_created','in_transit','out_for_delivery','delivered','returned'])[1 + (random()*4)::int],
     now() - (random() * interval '365 days'),
     CASE WHEN random() < 0.6 THEN now() - (random() * interval '360 days') ELSE NULL END
@@ -447,7 +447,7 @@ FROM generate_series(1, 4000000) g;
 INSERT INTO sessions (customer_id, token, ip_addr, user_agent, last_active, expires_at)
 SELECT
     CASE WHEN random() < 0.7 THEN 1 + (random() * 999999)::int ELSE NULL END,
-    encode(g::text || random()::text) || md5(random()::text),
+    md5(g::text || random()::text) || md5(random()::text),
     ('10.' || (random()*255)::int || '.' || (random()*255)::int || '.' || (random()*255)::int)::inet,
     (ARRAY[
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',

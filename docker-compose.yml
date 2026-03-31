@@ -90,12 +90,6 @@ services:
       retries: 30
     networks:
       - stress-net
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-        reservations:
-          memory: 512M
     logging:
       driver: json-file
       options:
