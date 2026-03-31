@@ -1,0 +1,209 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+
+  # ─── Build all Docker images ──────────────────────────────────────────
+  build:
+    name: Build Images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build load-generator (Go)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./load-generator
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build load-generator-orm (Python)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./load-generator-orm
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build pgbench-runner
+        uses: docker/build-push-action@v5
+        with:
+          context: ./pgbench-runner
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build dashboard
+        uses: docker/build-push-action@v5
+        with:
+          context: ./dashboard
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build truth-service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./truth-service
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── Lint Go code ────────────────────────────────────────────────────
+  lint-go:
+    name: Lint Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Go vet
+        working-directory: ./load-generator
+        run: go vet ./...
+
+      - name: Go build
+        working-directory: ./load-generator
+        run: go build -o /dev/null .
+
+  # ─── Lint Python code ────────────────────────────────────────────────
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install ruff
+          pip install -r load-generator-orm/requirements.txt
+          pip install -r dashboard/requirements.txt
+          pip install -r truth-service/requirements.txt
+
+      - name: Ruff check (load-generator-orm)
+        run: ruff check load-generator-orm/ --select E,F,I --ignore E501
+
+      - name: Ruff check (dashboard)
+        run: ruff check dashboard/ --select E,F,I --ignore E501
+
+      - name: Ruff check (truth-service)
+        run: ruff check truth-service/app/ --select E,F,I --ignore E501
+
+  # ─── Truth-service tests ─────────────────────────────────────────────
+  test-truth:
+    name: Test Truth Service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: ./truth-service
+        run: pip install -r requirements.txt pytest pytest-asyncio
+
+      - name: Run tests
+        working-directory: ./truth-service
+        run: python -m pytest tests/ -v
+
+  # ─── Docker Compose validation ───────────────────────────────────────
+  compose-validate:
+    name: Validate Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+
+      - name: Validate docker-compose.truth.yml
+        run: docker compose -f docker-compose.truth.yml config --quiet
+
+  # ─── Shell script lint ───────────────────────────────────────────────
+  lint-shell:
+    name: Lint Shell Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Shellcheck scripts
+        run: shellcheck scripts/*.sh pgbench-runner/entrypoint.sh || true
+
+  # ─── Integration smoke test ──────────────────────────────────────────
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: [build, lint-go, lint-python, compose-validate]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start core stack
+        run: docker compose up --build -d postgres load-generator dashboard
+
+      - name: Wait for postgres healthy
+        run: |
+          for i in $(seq 1 60); do
+            if docker compose exec -T postgres pg_isready -U postgres -d testdb 2>/dev/null; then
+              echo "PostgreSQL is ready"
+              break
+            fi
+            echo "Waiting for postgres... ($i/60)"
+            sleep 5
+          done
+
+      - name: Wait for seeding
+        run: |
+          for i in $(seq 1 120); do
+            count=$(docker compose exec -T postgres psql -U postgres -d testdb -t -A -c "SELECT count(*) FROM customers" 2>/dev/null || echo "0")
+            if [ "$count" -gt 0 ]; then
+              echo "Data seeded: $count customers"
+              break
+            fi
+            echo "Seeding... ($i/120)"
+            sleep 5
+          done
+
+      - name: Verify load-generator healthz
+        run: |
+          sleep 10
+          curl -sf http://localhost:9090/healthz | python3 -m json.tool
+
+      - name: Verify dashboard
+        run: curl -sf http://localhost:8000/health | python3 -m json.tool
+
+      - name: Verify pg_stat_statements active
+        run: |
+          docker compose exec -T postgres psql -U postgres -d testdb -c \
+            "SELECT count(*) AS tracked_queries FROM pg_stat_statements WHERE dbid = (SELECT oid FROM pg_database WHERE datname = 'testdb')"
+
+      - name: Check database size
+        run: |
+          docker compose exec -T postgres psql -U postgres -d testdb -c \
+            "SELECT pg_size_pretty(pg_database_size('testdb')) AS size"
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v

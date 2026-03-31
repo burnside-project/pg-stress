@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build all images
+        run: |
+          docker compose build postgres load-generator dashboard
+          docker compose --profile orm build
+          docker compose --profile pgbench build
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+          cat > release_notes.md <<'EOF'
+          ## What's Changed
+
+          ### Services
+          - **load-generator** — Go OLTP load generator with burst scheduling and chaos injection
+          - **load-generator-orm** — SQLAlchemy ORM pattern generator (10 query patterns)
+          - **pgbench-runner** — pgbench comparison with TPC-B + custom e-commerce scripts
+          - **dashboard** — Real-time monitoring UI with safety auto-pruning
+          - **truth-service** — Metric verification against PostgreSQL ground truth
+
+          ### Quick Start
+          ```bash
+          git clone https://github.com/dataalgebra-engineering/pg-stress.git
+          cd pg-stress
+          make up-full
+          ```
+
+          ### Profiles
+          | Profile | Command |
+          |---------|---------|
+          | Core | `make up` |
+          | + ORM | `make up-orm` |
+          | + pgbench | `make up-bench` |
+          | + Collector | `make up-collector` |
+          | Everything | `make up-full` |
+          EOF
+
+          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$TAG" ]; then
+            echo "" >> release_notes.md
+            echo "### Commits since ${PREV_TAG}" >> release_notes.md
+            git log ${PREV_TAG}..${TAG} --oneline --no-merges >> release_notes.md
+          fi
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md
+          generate_release_notes: true
