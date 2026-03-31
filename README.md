@@ -89,6 +89,18 @@ make analyze
 | `iot-timeseries` | 6 | ~50M rows / 12 GB | Devices, readings, alerts |
 | `content-platform` | 14 | ~35M rows / 9 GB | Users, posts, comments, feeds |
 
+---
+
+> ### Control Panel — configure intensity, inject rows, run growth ladders, trigger AI analysis
+> ![Control Panel](assets/control-panel-full.png)
+
+---
+
+> ### Metrics Dashboard — real-time TPS, cache ratio, connections, table sizes
+> ![Dashboard](assets/dashboard.png)
+
+---
+
 ## How It Works
 
 ```
