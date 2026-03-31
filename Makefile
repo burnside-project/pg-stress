@@ -123,7 +123,23 @@ verify: ## Run all truth-service verifications
 	@curl -s http://localhost:8001/verify/replication | python3 -m json.tool || echo "FAILED"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# AI Analyzer — Claude-powered analysis — profile: analyze
+# Control Plane — orchestration API
+# ═══════════════════════════════════════════════════════════════════════════
+
+.PHONY: up-control
+up-control: ## Start core + control plane (portal-driven scenarios)
+	SCENARIO=$(SCENARIO) $(COMPOSE) up --build -d control-plane
+	@echo ""
+	@echo "  Control Plane:  http://localhost:8100"
+	@echo "  API Docs:       http://localhost:8100/docs"
+	@echo "  Dashboard:      http://localhost:8000"
+
+.PHONY: logs-control
+logs-control: ## Follow control plane logs
+	$(COMPOSE) logs -f control-plane
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AI Analyzer — Claude-powered analysis (CLI or via control plane)
 # ═══════════════════════════════════════════════════════════════════════════
 
 .PHONY: analyze

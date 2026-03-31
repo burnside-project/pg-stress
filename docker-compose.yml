@@ -272,6 +272,44 @@ services:
         max-file: "3"
 
   # ════════════════════════════════════════════════════════════════════════
+  # Control Plane — orchestration API for WHAT IF scenarios + analyzer
+  # ════════════════════════════════════════════════════════════════════════
+
+  control-plane:
+    build:
+      context: ./control-plane
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_USER: postgres
+      PG_PASSWORD: postgres
+      PG_DATABASE: testdb
+      COMPOSE_PROJECT: pg-stress
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      REPORTS_DIR: /app/reports
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - .:/app/project:ro
+      - ./analyzer:/app/analyzer:ro
+      - control-plane-reports:/app/reports
+    ports:
+      - "${CONTROL_PLANE_PORT:-8100}:8100"
+    networks:
+      - stress-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "25m"
+        max-file: "3"
+
+  # ════════════════════════════════════════════════════════════════════════
   # pg-collector — metrics collection — profile: collector
   # ════════════════════════════════════════════════════════════════════════
 
@@ -381,3 +419,4 @@ volumes:
   stress-pg-data:
   collector-output:
   pgbench-results:
+  control-plane-reports:
