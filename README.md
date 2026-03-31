@@ -680,6 +680,7 @@ pg-stress/
 | [AI Analyzer](docs/03-ai-analyzer.md) | Claude integration, analysis modes, what gets collected |
 | [Configuration](docs/04-configuration.md) | All environment variables by service |
 | [Schema](docs/05-schema.md) | 18-table e-commerce schema, indexes, append-only table limits |
+| [Control Plane](docs/06-control-plane.md) | 9 knobs: inject, bulk-update, connections, ladder, analyze, generators |
 
 ## Relationship to Burnside Project
 
