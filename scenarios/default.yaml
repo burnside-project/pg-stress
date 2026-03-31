@@ -1,0 +1,47 @@
+name: default
+description: Standard OLTP stress test with moderate burst intensity
+
+load_generator:
+  mix:
+    browse: 50
+    cart: 20
+    checkout: 5
+    order_mgmt: 10
+    background: 10
+    reporting: 5
+  bursts:
+    low:    { connections: 5,  duration: 10s, weight: 50 }
+    medium: { connections: 20, duration: 30s, weight: 35 }
+    heavy:  { connections: 50, duration: 60s, weight: 15 }
+  chaos:
+    enabled: true
+    probability: 25
+  pause:
+    min_seconds: 20
+    max_seconds: 90
+
+orm_generator:
+  concurrency: 5
+  pause_min_ms: 10
+  pause_max_ms: 50
+  mix:
+    n_plus_1: 15
+    eager_join: 15
+    eager_subquery: 10
+    eager_selectin: 10
+    bulk_insert: 5
+    orm_update: 10
+    pagination: 10
+    aggregation: 10
+    exists_filter: 10
+    relationship: 5
+
+safety:
+  table_limits:
+    search_log: 5000000
+    audit_log: 5000000
+    price_history: 2000000
+    cart_items: 1000000
+    reviews: 5000000
+  prune_to_pct: 70
+  max_database_size_bytes: 20000000000

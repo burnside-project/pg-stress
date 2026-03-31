@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PG Stress Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>PG Stress Test Dashboard</h1>
+        </div>
+        <div class="meta">
+            <span id="scenario-name">-</span>
+            <span id="elapsed">-</span>
+            <span id="samples-count">-</span>
+            <span class="badge" id="status-badge">running</span>
+        </div>
+    </header>
+
+    <div class="cards">
+        <div class="card">
+            <div class="label">Active Connections</div>
+            <div class="value" id="card-conns">-</div>
+            <div class="sub" id="card-conns-sub">idle: - | idle-txn: -</div>
+        </div>
+        <div class="card">
+            <div class="label">Transactions/sec</div>
+            <div class="value" id="card-txn">-</div>
+            <div class="sub" id="card-txn-sub">commit + rollback</div>
+        </div>
+        <div class="card">
+            <div class="label">Tuple Ops/sec</div>
+            <div class="value" id="card-ops">-</div>
+            <div class="sub" id="card-ops-sub">ins: - | upd: - | del: -</div>
+        </div>
+        <div class="card">
+            <div class="label">Cache Hit Ratio</div>
+            <div class="value" id="card-cache">-</div>
+            <div class="sub" id="card-cache-sub">blks read/hit per sec</div>
+        </div>
+        <div class="card">
+            <div class="label">Database Size</div>
+            <div class="value" id="card-dbsize">-</div>
+            <div class="sub" id="card-dbsize-sub">-</div>
+        </div>
+        <div class="card">
+            <div class="label">Locks</div>
+            <div class="value" id="card-locks">-</div>
+            <div class="sub" id="card-locks-sub">waiting: -</div>
+        </div>
+        <div class="card">
+            <div class="label">Deadlocks</div>
+            <div class="value" id="card-deadlocks">-</div>
+            <div class="sub">cumulative</div>
+        </div>
+        <div class="card">
+            <div class="label">Temp Files</div>
+            <div class="value" id="card-temp">-</div>
+            <div class="sub" id="card-temp-sub">-</div>
+        </div>
+    </div>
+
+    <div class="time-filter">
+        <button data-range="600" class="active">10m</button>
+        <button data-range="3600">1h</button>
+        <button data-range="21600">6h</button>
+        <button data-range="86400">24h</button>
+        <button data-range="0">All</button>
+    </div>
+
+    <div class="charts">
+        <div class="chart-box">
+            <h3>Transactions / sec</h3>
+            <canvas id="chart-txn"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>Tuple Operations / sec</h3>
+            <canvas id="chart-ops"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>Connections</h3>
+            <canvas id="chart-conns"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>Cache Hit Ratio</h3>
+            <canvas id="chart-cache"></canvas>
+        </div>
+    </div>
+
+    <div class="charts">
+        <div class="chart-box">
+            <h3>Table Row Counts (Monitored)</h3>
+            <canvas id="chart-tables"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>Locks &amp; Dead Tuples</h3>
+            <canvas id="chart-locks"></canvas>
+        </div>
+    </div>
+
+    <div class="loadgen-panel" id="loadgen-panel" style="display:none">
+        <h3>Load Generator Stats</h3>
+        <div class="cards" id="loadgen-cards"></div>
+    </div>
+
+    <div class="tables-panel">
+        <h3>Table Sizes &amp; Safety Limits</h3>
+        <table id="tables-table">
+            <thead>
+                <tr>
+                    <th>Table</th>
+                    <th class="num">Rows</th>
+                    <th class="num">Dead Tuples</th>
+                    <th class="num">Size</th>
+                    <th>Limit Usage</th>
+                    <th class="num">Limit</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div class="safety-events" id="safety-events"></div>
+    </div>
+
+    <script src="/static/dashboard.js"></script>
+</body>
+</html>

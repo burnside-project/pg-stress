@@ -1,0 +1,68 @@
+# Collector config for truth-service verification
+# Runs in demo mode with local JSONL output at fast sampling rates
+
+mode: demo
+
+customer_id: truth-test
+tenant_tier: demo
+api_key: truth-test-key
+api_secret: truth-test-secret
+
+output_mode: local_only
+
+# Connect to the shared postgres container
+postgres:
+  conn_string: "postgres://postgres:postgres@postgres:5432/testdb"
+  max_conns: 1
+  query_timeout: 3s
+  connect_timeout: 10s
+  auth_method: password
+
+# Local output to shared volume
+local:
+  enabled: true
+  path: /data/collector-output
+  format: jsonl
+  rotate_interval: 5m
+  max_file_size: 50MB
+  flush_interval: 5s
+  split_by_metric_type: true
+
+# Fast sampling for truth verification
+sampling:
+  activity: 10s
+  database: 10s
+  statements: 30s
+  bgwriter: 15s
+  replication: 10s
+  vacuum: 30s
+  enabled:
+    activity: true
+    database: true
+    statements: true
+    bgwriter: true
+    replication: false
+    vacuum: true
+    locks: true
+    wal: true
+    slots: false
+    wal_receiver: false
+    statio: false
+    bloat: false
+
+buffers:
+  memory_capacity: 100
+  disk_max_size: 20MB
+  disk_path: /var/lib/pg-collector/buffer.db
+  sqlite:
+    journal_mode: WAL
+    synchronous: NORMAL
+    busy_timeout: 5000
+
+http:
+  address: ":8080"
+
+log:
+  level: info
+  format: console
+  output: stdout

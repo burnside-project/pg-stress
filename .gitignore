@@ -8,3 +8,20 @@ build/
 out/
 *.jsonl
 .venv/
+
+# Go
+load-generator/soak-load
+
+# Reports & benchmark output
+out/benchmark-*/
+out/report-*/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

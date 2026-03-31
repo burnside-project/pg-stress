@@ -1,0 +1,47 @@
+name: heavy
+description: Heavy stress with high connection counts, frequent chaos, and short pauses
+
+load_generator:
+  mix:
+    browse: 40
+    cart: 25
+    checkout: 10
+    order_mgmt: 10
+    background: 10
+    reporting: 5
+  bursts:
+    low:    { connections: 15, duration: 15s, weight: 20 }
+    medium: { connections: 40, duration: 45s, weight: 40 }
+    heavy:  { connections: 80, duration: 90s, weight: 40 }
+  chaos:
+    enabled: true
+    probability: 50
+  pause:
+    min_seconds: 5
+    max_seconds: 20
+
+orm_generator:
+  concurrency: 15
+  pause_min_ms: 5
+  pause_max_ms: 20
+  mix:
+    n_plus_1: 20
+    eager_join: 15
+    eager_subquery: 10
+    eager_selectin: 10
+    bulk_insert: 10
+    orm_update: 10
+    pagination: 5
+    aggregation: 5
+    exists_filter: 10
+    relationship: 5
+
+safety:
+  table_limits:
+    search_log: 5000000
+    audit_log: 5000000
+    price_history: 2000000
+    cart_items: 1000000
+    reviews: 5000000
+  prune_to_pct: 70
+  max_database_size_bytes: 30000000000

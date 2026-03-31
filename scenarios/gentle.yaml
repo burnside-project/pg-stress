@@ -1,0 +1,47 @@
+name: gentle
+description: Light load for development and collector testing — no chaos, low connections
+
+load_generator:
+  mix:
+    browse: 60
+    cart: 15
+    checkout: 3
+    order_mgmt: 7
+    background: 10
+    reporting: 5
+  bursts:
+    low:    { connections: 3,  duration: 10s, weight: 70 }
+    medium: { connections: 8,  duration: 20s, weight: 25 }
+    heavy:  { connections: 15, duration: 30s, weight: 5 }
+  chaos:
+    enabled: false
+    probability: 0
+  pause:
+    min_seconds: 30
+    max_seconds: 120
+
+orm_generator:
+  concurrency: 2
+  pause_min_ms: 50
+  pause_max_ms: 200
+  mix:
+    n_plus_1: 10
+    eager_join: 20
+    eager_subquery: 15
+    eager_selectin: 15
+    bulk_insert: 5
+    orm_update: 5
+    pagination: 10
+    aggregation: 10
+    exists_filter: 5
+    relationship: 5
+
+safety:
+  table_limits:
+    search_log: 2000000
+    audit_log: 2000000
+    price_history: 1000000
+    cart_items: 500000
+    reviews: 2000000
+  prune_to_pct: 70
+  max_database_size_bytes: 15000000000
