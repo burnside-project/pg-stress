@@ -784,7 +784,7 @@ class IntensityRequest(BaseModel):
 
 @app.post("/config/intensity")
 def set_intensity(req: IntensityRequest):
-    """Switch intensity preset. Requires stack restart to take effect."""
+    """Switch intensity preset and restart load generators to apply."""
     if req.level not in INTENSITY_PRESETS:
         raise HTTPException(400, f"Unknown intensity: {req.level}. Options: {list(INTENSITY_PRESETS.keys())}")
 
@@ -792,7 +792,7 @@ def set_intensity(req: IntensityRequest):
     if not env_file.exists():
         raise HTTPException(500, f"Preset file not found: {env_file}")
 
-    # Read the preset and apply to environment.
+    # Read the preset vars.
     applied = {}
     for line in env_file.read_text().splitlines():
         line = line.strip()
@@ -800,15 +800,57 @@ def set_intensity(req: IntensityRequest):
             continue
         if "=" in line:
             key, val = line.split("=", 1)
-            os.environ[key.strip()] = val.strip()
             applied[key.strip()] = val.strip()
+            os.environ[key.strip()] = val.strip()
+
+    # Write a combined .env to the project directory so docker compose picks it up.
+    project_env = Path("/app/project/.env")
+    existing = {}
+    if project_env.exists():
+        for line in project_env.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                existing[k.strip()] = v.strip()
+    existing.update(applied)
+
+    with open(project_env, "w") as f:
+        f.write(f"# pg-stress — intensity: {req.level} (auto-generated)\n")
+        for k, v in sorted(existing.items()):
+            f.write(f"{k}={v}\n")
+
+    # Restart the load generator so it picks up new env vars.
+    restarted = []
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "up", "-d", "--force-recreate", "load-generator"],
+            cwd="/app/project",
+            capture_output=True, text=True, timeout=60,
+        )
+        restarted.append("load-generator")
+        log.info("intensity: restarted load-generator for %s", req.level)
+    except Exception as e:
+        log.error("intensity: failed to restart load-generator: %s", e)
+
+    # Restart ORM generator if it's running.
+    orm = find_container("load-generator-orm")
+    if orm and orm.status == "running":
+        try:
+            subprocess.run(
+                ["docker", "compose", "--profile", "orm", "up", "-d", "--force-recreate", "load-generator-orm"],
+                cwd="/app/project",
+                capture_output=True, text=True, timeout=60,
+            )
+            restarted.append("load-generator-orm")
+        except Exception:
+            pass
 
     return {
-        "status": "applied",
+        "status": "applied_and_restarted",
         "intensity": req.level,
         "description": INTENSITY_PRESETS[req.level],
         "vars_set": len(applied),
-        "note": "Restart load generators for changes to take effect. Use POST /generators/orm/stop then /start.",
+        "restarted": restarted,
     }
 
 

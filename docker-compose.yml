@@ -291,8 +291,8 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       REPORTS_DIR: /app/reports
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - .:/app/project:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/app/project
       - ./analyzer:/app/analyzer:ro
       - control-plane-reports:/app/reports
     ports:
