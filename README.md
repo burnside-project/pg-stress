@@ -66,7 +66,6 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
 ### I have production data:
 
 ```console
-$ mkdir pg-stress
 $ cd pg-stress
 $ git clone https://github.com/burnside-project/pg-stress.git
 $ cd pg-stress && cp .env.example .env
