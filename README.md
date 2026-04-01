@@ -23,6 +23,9 @@ realistic ORM and SQL load patterns automatically.
 After the test, feed the results to Claude for tuning advice, query fixes, and
 capacity predictions.
 
+## What you can do beyond one off test
+Before releasing a new query in the **WILD - inject that query in pg-stress. Run it with 100s of connection, test the joints, insert 10M rows(kidding !). Output the findings to Claude Chat box for advisory!
+
 ## How It Works
 
 ```
