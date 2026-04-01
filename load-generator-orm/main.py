@@ -1,20 +1,14 @@
-"""ORM-based load generator for pg-collector SQL fingerprint validation.
+"""Templatized ORM load generator for pg-stress.
 
-Exercises SQLAlchemy ORM patterns that produce distinct pg_stat_statements
-fingerprints compared to the raw-SQL Go load generator:
+Works with ANY PostgreSQL schema — not hardcoded to e-commerce.
+At startup:
+  1. Introspects the database (tables, FKs, indexes, row counts)
+  2. Auto-generates ORM models via SQLAlchemy automap
+  3. Builds operation templates from the FK graph
+  4. Runs weighted random operations against discovered schema
 
-  - N+1 selects (lazy relationship loading)
-  - Eager loading (joinedload / subqueryload)
-  - Subquery-based IN (selectinload prefetch)
-  - Bulk INSERT with RETURNING
-  - ORM .save() / flush patterns (implicit UPDATE with WHERE pk = ?)
-  - Hybrid property / column_property queries
-  - Pagination via .limit().offset()
-  - Aggregation via ORM func()
-  - Exists / has subqueries
-  - Relationship-based filtering
-
-All operations target the same 18-table e-commerce schema as the Go load generator.
+Each operation is a generic pattern (N+1, eager load, pagination, etc.)
+applied to real FK chains found in your schema.
 """
 
 import json
@@ -25,20 +19,15 @@ import signal
 import sys
 import threading
 import time
-from contextlib import contextmanager
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from sqlalchemy import create_engine, func, select, update, delete, and_, exists, text
-from sqlalchemy.orm import Session, sessionmaker, joinedload, subqueryload, selectinload
+from sqlalchemy import create_engine, func, select, text
+from sqlalchemy.orm import Session, joinedload, subqueryload, selectinload
 
-from models import (
-    Address, AuditLog, CartItem, Category, CouponRedemption, Customer,
-    Inventory, Order, OrderItem, Payment, PriceHistory, Product,
-    ProductVariant, Promotion, Review, SearchLog, Session as SessionModel,
-    Shipment,
-)
+from models import reflect_database
+from introspect import introspect_schema, SchemaProfile, TableProfile
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,73 +36,42 @@ logging.basicConfig(
 )
 log = logging.getLogger("orm-load")
 
-# ── Table size constants (match Go load generator) ───────────────────────
-
-MAX_CUSTOMERS = env_int("LOADGEN_MAX_CUSTOMERS", 1_000_000)
-MAX_PRODUCTS = env_int("LOADGEN_MAX_PRODUCTS", 100_000)
-MAX_VARIANTS = env_int("LOADGEN_MAX_VARIANTS", 300_000)
-MAX_ORDERS = env_int("LOADGEN_MAX_ORDERS", 5_000_000)
-MAX_SESSIONS = env_int("LOADGEN_MAX_SESSIONS", 100_000)
-MAX_PROMOS = env_int("LOADGEN_MAX_PROMOS", 1_000)
-MAX_ADDRESSES = env_int("LOADGEN_MAX_ADDRESSES", 2_000_000)
-MAX_CATEGORIES = env_int("LOADGEN_MAX_CATEGORIES", 500)
-
 
 # ── Configuration ────────────────────────────────────────────────────────
-
 
 def env_int(key: str, default: int) -> int:
     v = os.environ.get(key)
     return int(v) if v else default
 
-
-def env_bool(key: str, default: bool) -> bool:
-    v = os.environ.get(key, "").lower()
-    if v in ("1", "true", "yes"):
-        return True
-    if v in ("0", "false", "no"):
-        return False
-    return default
-
-
 PG_CONN = os.environ.get("PG_CONN", "postgresql://postgres:postgres@localhost:5432/testdb")
 CONCURRENCY = env_int("ORM_CONCURRENCY", 5)
-DURATION = env_int("ORM_DURATION", 0)  # 0 = run forever
+DURATION = env_int("ORM_DURATION", 0)
 STATS_INTERVAL = env_int("ORM_STATS_INTERVAL", 30)
 PAUSE_MIN = env_int("ORM_PAUSE_MIN", 10)
 PAUSE_MAX = env_int("ORM_PAUSE_MAX", 50)
 
-# ORM pattern mix weights (should sum to 100).
-MIX_N_PLUS_1 = env_int("ORM_MIX_N_PLUS_1", 15)
-MIX_EAGER_JOIN = env_int("ORM_MIX_EAGER_JOIN", 15)
-MIX_EAGER_SUBQUERY = env_int("ORM_MIX_EAGER_SUBQUERY", 10)
-MIX_EAGER_SELECTIN = env_int("ORM_MIX_EAGER_SELECTIN", 10)
-MIX_BULK_INSERT = env_int("ORM_MIX_BULK_INSERT", 5)
-MIX_ORM_UPDATE = env_int("ORM_MIX_ORM_UPDATE", 10)
-MIX_PAGINATION = env_int("ORM_MIX_PAGINATION", 10)
-MIX_AGGREGATION = env_int("ORM_MIX_AGGREGATION", 10)
-MIX_EXISTS_FILTER = env_int("ORM_MIX_EXISTS_FILTER", 10)
-MIX_RELATIONSHIP = env_int("ORM_MIX_RELATIONSHIP", 5)
+# Pattern mix weights.
+MIX = {
+    "n_plus_1":       env_int("ORM_MIX_N_PLUS_1", 15),
+    "eager_join":     env_int("ORM_MIX_EAGER_JOIN", 15),
+    "eager_subquery": env_int("ORM_MIX_EAGER_SUBQUERY", 10),
+    "eager_selectin": env_int("ORM_MIX_EAGER_SELECTIN", 10),
+    "bulk_insert":    env_int("ORM_MIX_BULK_INSERT", 5),
+    "orm_update":     env_int("ORM_MIX_ORM_UPDATE", 10),
+    "pagination":     env_int("ORM_MIX_PAGINATION", 10),
+    "aggregation":    env_int("ORM_MIX_AGGREGATION", 10),
+    "exists_filter":  env_int("ORM_MIX_EXISTS_FILTER", 10),
+    "relationship":   env_int("ORM_MIX_RELATIONSHIP", 5),
+}
+
 
 # ── Stats ────────────────────────────────────────────────────────────────
-
 
 class Stats:
     def __init__(self):
         self._lock = threading.Lock()
-        self.counters = {
-            "n_plus_1": 0,
-            "eager_join": 0,
-            "eager_subquery": 0,
-            "eager_selectin": 0,
-            "bulk_insert": 0,
-            "orm_update": 0,
-            "pagination": 0,
-            "aggregation": 0,
-            "exists_filter": 0,
-            "relationship": 0,
-            "errors": 0,
-        }
+        self.counters = {k: 0 for k in MIX}
+        self.counters["errors"] = 0
         self.start_time = time.time()
 
     def inc(self, key: str):
@@ -122,31 +80,24 @@ class Stats:
 
     def snapshot(self) -> dict:
         with self._lock:
-            return {
-                "status": "running",
-                "uptime_s": int(time.time() - self.start_time),
-                "ops": dict(self.counters),
-            }
-
+            return {"status": "running", "uptime_s": int(time.time() - self.start_time), "ops": dict(self.counters)}
 
 stats = Stats()
 
-# ── Shutdown signal ──────────────────────────────────────────────────────
+
+# ── Shutdown ─────────────────────────────────────────────────────────────
 
 shutdown = threading.Event()
-
 
 def handle_signal(sig, frame):
     log.info("Received signal %s, shutting down...", sig)
     shutdown.set()
 
-
 signal.signal(signal.SIGINT, handle_signal)
 signal.signal(signal.SIGTERM, handle_signal)
 
 
-# ── Healthz HTTP server ─────────────────────────────────────────────────
-
+# ── Healthz ──────────────────────────────────────────────────────────────
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -159,435 +110,412 @@ class HealthHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
-
     def log_message(self, fmt, *args):
-        pass  # Suppress request logging.
+        pass
 
 
-def serve_healthz():
-    server = HTTPServer(("", 9091), HealthHandler)
-    server.serve_forever()
-
-
-# ── ORM Operations ───────────────────────────────────────────────────────
+# ── Templatized Operations ───────────────────────────────────────────────
 #
-# Each function exercises a distinct ORM pattern that produces different
-# pg_stat_statements fingerprints than raw SQL.
+# Each operation is a generic pattern applied to discovered FK chains.
+# They receive the schema profile and models, not hardcoded table names.
 
 
-def op_n_plus_1(session: Session):
-    """N+1 pattern: load products, then lazily access each product's variants.
+class OperationContext:
+    """Holds everything an operation needs: models, profile, FK chains."""
 
-    ORM produces: 1 SELECT for products + N SELECTs for product_variants.
-    This is the classic ORM anti-pattern that pg-collector should identify
-    as many similar queries with different parameter values.
-    """
-    cat_id = random.randint(1, MAX_CATEGORIES)
-    products = session.scalars(
-        select(Product)
-        .where(Product.category_id == cat_id, Product.status == "active")
-        .limit(10)
+    def __init__(self, models, profile: SchemaProfile):
+        self.models = models
+        self.profile = profile
+
+        # Pre-compute useful structures.
+        self.children_of = defaultdict(list)  # parent → [child tables]
+        self.parent_of = defaultdict(list)    # child → [parent tables]
+        self.fk_map = {}                      # (child, parent) → fk_column
+
+        for rel in profile.relationships:
+            self.children_of[rel.parent_table].append(rel.child_table)
+            self.parent_of[rel.child_table].append(rel.parent_table)
+            self.fk_map[(rel.child_table, rel.parent_table)] = rel.fk_column
+
+        # Tables with enough rows to query.
+        self.queryable = [
+            t for t, tp in profile.tables.items()
+            if tp.row_count >= 100 and models.has_table(t)
+        ]
+
+        # FK chains of depth 2+ (for N+1 and eager load).
+        self.chains_2 = [c for c in profile.fk_chains if c.depth >= 2 and all(models.has_table(t) for t in c.tables)]
+        self.chains_3 = [c for c in profile.fk_chains if c.depth >= 3 and all(models.has_table(t) for t in c.tables)]
+
+        # Tables suitable for specific operations.
+        self.insertable = [
+            t for t in (profile.append_only_tables + profile.transactional_tables)
+            if models.has_table(t) and profile.tables[t].row_count > 0
+        ]
+        self.updatable = [
+            t for t, tp in profile.tables.items()
+            if tp.timestamp_columns and models.has_table(t) and tp.row_count >= 100
+            and tp.role in ("transactional", "entity")
+        ]
+        self.paginable = [
+            t for t, tp in profile.tables.items()
+            if tp.row_count >= 1000 and tp.timestamp_columns and models.has_table(t)
+        ]
+        self.aggregable = [
+            t for t, tp in profile.tables.items()
+            if tp.numeric_columns and tp.foreign_keys and tp.row_count >= 1000 and models.has_table(t)
+        ]
+        self.has_rels = [
+            t for t in profile.tables
+            if self.children_of.get(t) and models.has_table(t)
+            and profile.tables[t].row_count >= 100
+        ]
+
+    def max_id(self, table: str) -> int:
+        return self.profile.max_ids.get(table, 1000)
+
+    def get_model(self, table: str):
+        return self.models.get_model(table)
+
+    def get_relationship_attr(self, model, child_table: str):
+        """Find the automap relationship attribute name for a child table."""
+        for attr_name in dir(model):
+            if attr_name.startswith("_"):
+                continue
+            attr = getattr(model, attr_name, None)
+            if hasattr(attr, "property") and hasattr(attr.property, "mapper"):
+                if attr.property.mapper.mapped_table.name == child_table:
+                    return attr_name
+        return None
+
+
+def op_n_plus_1(session: Session, ctx: OperationContext):
+    """N+1 pattern on any FK chain depth >= 2."""
+    if not ctx.chains_2:
+        return
+    chain = random.choice(ctx.chains_2)
+    ParentModel = ctx.get_model(chain.tables[0])
+    if not ParentModel:
+        return
+
+    parents = session.scalars(
+        select(ParentModel).limit(10)
     ).all()
 
-    # Trigger lazy loads — each access issues a separate SELECT.
-    for p in products:
-        _ = p.variants  # N separate SELECTs for product_variants
-        for v in p.variants:
-            _ = v.inventory  # N more SELECTs for inventory
+    # Trigger lazy loads down the chain.
+    for p in parents:
+        for child_table in chain.tables[1:]:
+            rel_attr = ctx.get_relationship_attr(ParentModel, child_table)
+            if rel_attr:
+                _ = getattr(p, rel_attr, None)
 
 
-def op_eager_joinedload(session: Session):
-    """Eager loading via JOIN: single query with LEFT OUTER JOINs.
+def op_eager_join(session: Session, ctx: OperationContext):
+    """Eager joinedload on any FK chain."""
+    if not ctx.chains_2:
+        return
+    chain = random.choice(ctx.chains_2)
+    RootModel = ctx.get_model(chain.tables[0])
+    if not RootModel:
+        return
 
-    ORM produces a single large SELECT with multiple JOINs — very different
-    fingerprint from the N+1 pattern above, even for the same data.
-    """
-    customer_id = random.randint(1, MAX_CUSTOMERS)
-    customer = session.scalars(
-        select(Customer)
-        .options(
-            joinedload(Customer.orders).joinedload(Order.items).joinedload(OrderItem.variant),
-            joinedload(Customer.addresses),
-        )
-        .where(Customer.id == customer_id)
-    ).unique().first()
+    # Build joinedload chain.
+    root_rel = ctx.get_relationship_attr(RootModel, chain.tables[1])
+    if not root_rel:
+        return
 
-    if customer:
-        # Data already loaded — no additional queries.
-        _ = [(o.status, len(o.items)) for o in customer.orders[:5]]
+    query = select(RootModel).options(
+        joinedload(getattr(RootModel, root_rel))
+    ).limit(5)
+
+    results = session.scalars(query).unique().all()
+    _ = len(results)
 
 
-def op_eager_subqueryload(session: Session):
-    """Eager loading via subquery: separate SELECT with IN (subquery).
+def op_eager_subquery(session: Session, ctx: OperationContext):
+    """Eager subqueryload on any FK chain."""
+    if not ctx.chains_2:
+        return
+    chain = random.choice(ctx.chains_2)
+    RootModel = ctx.get_model(chain.tables[0])
+    if not RootModel:
+        return
 
-    ORM produces: 1 SELECT for orders + 1 SELECT for items WHERE order_id IN (SELECT ...).
-    This is a distinct fingerprint from joinedload.
-    """
-    customer_id = random.randint(1, MAX_CUSTOMERS)
-    orders = session.scalars(
-        select(Order)
-        .options(
-            subqueryload(Order.items),
-            subqueryload(Order.payments),
-        )
-        .where(Order.customer_id == customer_id)
-        .order_by(Order.placed_at.desc())
-        .limit(10)
+    root_rel = ctx.get_relationship_attr(RootModel, chain.tables[1])
+    if not root_rel:
+        return
+
+    results = session.scalars(
+        select(RootModel).options(
+            subqueryload(getattr(RootModel, root_rel))
+        ).limit(10)
+    ).all()
+    _ = len(results)
+
+
+def op_eager_selectin(session: Session, ctx: OperationContext):
+    """Eager selectinload on any FK chain."""
+    if not ctx.chains_2:
+        return
+    chain = random.choice(ctx.chains_2)
+    RootModel = ctx.get_model(chain.tables[0])
+    if not RootModel:
+        return
+
+    root_rel = ctx.get_relationship_attr(RootModel, chain.tables[1])
+    if not root_rel:
+        return
+
+    results = session.scalars(
+        select(RootModel).options(
+            selectinload(getattr(RootModel, root_rel))
+        ).limit(20)
+    ).all()
+    _ = len(results)
+
+
+def op_bulk_insert(session: Session, ctx: OperationContext):
+    """Bulk INSERT via add_all() on any append-only or transactional table."""
+    if not ctx.insertable:
+        return
+    table_name = random.choice(ctx.insertable)
+    Model = ctx.get_model(table_name)
+    if not Model:
+        return
+
+    tp = ctx.profile.tables[table_name]
+
+    # Clone existing rows (SELECT random subset → re-insert without PK).
+    source_rows = session.scalars(
+        select(Model).order_by(func.random()).limit(random.randint(3, 15))
     ).all()
 
-    for o in orders:
-        _ = sum(item.line_total for item in o.items)
+    if not source_rows:
+        return
+
+    pk_cols = set(tp.pk_columns)
+    serial_cols = {c.name for c in tp.columns if c.is_serial}
+    skip_cols = pk_cols | serial_cols
+
+    new_objects = []
+    for row in source_rows:
+        obj = Model()
+        for col in tp.columns:
+            if col.name not in skip_cols:
+                val = getattr(row, col.name, None)
+                if val is not None:
+                    setattr(obj, col.name, val)
+        # Update timestamp if present.
+        for ts_col in ["created_at", "logged_at", "recorded_at"]:
+            if ts_col in [c.name for c in tp.columns]:
+                setattr(obj, ts_col, datetime.now(timezone.utc))
+        new_objects.append(obj)
+
+    session.add_all(new_objects)
+    session.flush()
 
 
-def op_eager_selectinload(session: Session):
-    """Eager loading via SELECT IN: separate SELECT with IN (literal list).
+def op_orm_update(session: Session, ctx: OperationContext):
+    """ORM load-modify-save on any updatable table."""
+    if not ctx.updatable:
+        return
+    table_name = random.choice(ctx.updatable)
+    Model = ctx.get_model(table_name)
+    if not Model:
+        return
 
-    ORM produces: 1 SELECT for products + 1 SELECT WHERE product_id IN ($1, $2, ..., $N).
-    The IN-list size varies, creating multiple pg_stat_statements entries.
-    """
-    cat_id = random.randint(1, MAX_CATEGORIES)
-    products = session.scalars(
-        select(Product)
-        .options(
-            selectinload(Product.variants).selectinload(ProductVariant.inventory),
-            selectinload(Product.reviews),
-        )
-        .where(Product.category_id == cat_id, Product.status == "active")
+    tp = ctx.profile.tables[table_name]
+    max_id = ctx.max_id(table_name)
+
+    # Load a random row by PK.
+    pk_col = tp.pk_columns[0] if tp.pk_columns else None
+    if not pk_col:
+        return
+
+    row = session.get(Model, random.randint(1, max_id))
+    if not row:
+        return
+
+    # Update a timestamp column.
+    for ts_col in ["updated_at", "modified_at", "last_active", "last_login", "changed_at"]:
+        if hasattr(row, ts_col):
+            setattr(row, ts_col, datetime.now(timezone.utc))
+            break
+
+    # Update a status column if present.
+    if tp.status_columns:
+        col_name = tp.status_columns[0]
+        current = getattr(row, col_name, None)
+        if current and isinstance(current, str):
+            # Don't change the value — just touch it to generate an UPDATE.
+            setattr(row, col_name, current)
+
+    session.flush()
+
+
+def op_pagination(session: Session, ctx: OperationContext):
+    """LIMIT/OFFSET pagination on any table with timestamps."""
+    if not ctx.paginable:
+        return
+    table_name = random.choice(ctx.paginable)
+    Model = ctx.get_model(table_name)
+    if not Model:
+        return
+
+    tp = ctx.profile.tables[table_name]
+    order_col = None
+    for ts in ["created_at", "placed_at", "logged_at", "recorded_at"]:
+        if hasattr(Model, ts):
+            order_col = getattr(Model, ts)
+            break
+
+    if order_col is None:
+        pk = tp.pk_columns[0] if tp.pk_columns else None
+        if pk and hasattr(Model, pk):
+            order_col = getattr(Model, pk)
+
+    if order_col is None:
+        return
+
+    page = random.randint(0, 10)
+    page_size = random.choice([10, 20, 25, 50])
+    results = session.scalars(
+        select(Model).order_by(order_col.desc()).limit(page_size).offset(page * page_size)
+    ).all()
+    _ = len(results)
+
+
+def op_aggregation(session: Session, ctx: OperationContext):
+    """Aggregation (count/sum/avg) on any table with numeric columns + FK grouping."""
+    if not ctx.aggregable:
+        return
+    table_name = random.choice(ctx.aggregable)
+    Model = ctx.get_model(table_name)
+    if not Model:
+        return
+
+    tp = ctx.profile.tables[table_name]
+
+    # Find a numeric column to aggregate.
+    num_col_name = random.choice(tp.numeric_columns)
+    if not hasattr(Model, num_col_name):
+        return
+    num_col = getattr(Model, num_col_name)
+
+    # Find a FK column to group by.
+    fk_col_name = None
+    for fk in tp.foreign_keys:
+        if hasattr(Model, fk.column):
+            fk_col_name = fk.column
+            break
+
+    if fk_col_name and hasattr(Model, fk_col_name):
+        fk_col = getattr(Model, fk_col_name)
+        results = session.execute(
+            select(fk_col, func.count(), func.sum(num_col), func.avg(num_col))
+            .group_by(fk_col)
+            .order_by(func.sum(num_col).desc())
+            .limit(20)
+        ).all()
+    else:
+        results = session.execute(
+            select(func.count(), func.sum(num_col), func.avg(num_col))
+        ).all()
+
+    _ = len(results)
+
+
+def op_exists_filter(session: Session, ctx: OperationContext):
+    """EXISTS subquery on any parent table that has FK children."""
+    if not ctx.has_rels:
+        return
+    parent_table = random.choice(ctx.has_rels)
+    ParentModel = ctx.get_model(parent_table)
+    if not ParentModel:
+        return
+
+    children = ctx.children_of[parent_table]
+    child_table = random.choice(children)
+
+    # Build: SELECT parent WHERE EXISTS (SELECT 1 FROM child WHERE child.fk = parent.pk)
+    fk_col_name = ctx.fk_map.get((child_table, parent_table))
+    if not fk_col_name:
+        return
+
+    rel_attr = ctx.get_relationship_attr(ParentModel, child_table)
+    if not rel_attr:
+        return
+
+    rel = getattr(ParentModel, rel_attr)
+    results = session.scalars(
+        select(ParentModel).where(rel.any()).limit(20)
+    ).all()
+    _ = len(results)
+
+
+def op_relationship_filter(session: Session, ctx: OperationContext):
+    """Relationship-based JOIN filtering on any FK chain."""
+    if not ctx.chains_2:
+        return
+    chain = random.choice(ctx.chains_2[:10])
+    RootModel = ctx.get_model(chain.tables[0])
+    ChildModel = ctx.get_model(chain.tables[1])
+    if not RootModel or not ChildModel:
+        return
+
+    root_rel = ctx.get_relationship_attr(RootModel, chain.tables[1])
+    if not root_rel:
+        return
+
+    results = session.scalars(
+        select(RootModel)
+        .join(getattr(RootModel, root_rel))
         .limit(20)
-    ).all()
-
-    for p in products:
-        _ = len(p.reviews)
-        for v in p.variants:
-            _ = v.inventory.qty_available if v.inventory else 0
-
-
-def op_bulk_insert(session: Session):
-    """Bulk INSERT with ORM: add_all() + flush().
-
-    ORM produces INSERT ... VALUES (...) RETURNING id — one per object or
-    batched depending on dialect. Distinct from raw INSERT ... VALUES.
-    """
-    session_id = random.randint(1, MAX_SESSIONS)
-    variant_ids = [random.randint(1, MAX_VARIANTS) for _ in range(random.randint(3, 10))]
-
-    items = [
-        CartItem(
-            session_id=session_id,
-            variant_id=vid,
-            qty=random.randint(1, 5),
-        )
-        for vid in variant_ids
-    ]
-    session.add_all(items)
-    session.flush()
-
-    # Also test bulk search log inserts.
-    queries = ["laptop", "shoes", "headphones", "keyboard", "coffee maker",
-               "monitor", "backpack", "phone case", "webcam", "standing desk"]
-    logs = [
-        SearchLog(
-            session_id=session_id,
-            query=random.choice(queries),
-            results_count=random.randint(0, 200),
-        )
-        for _ in range(random.randint(5, 15))
-    ]
-    session.add_all(logs)
-    session.flush()
-
-
-def op_orm_update(session: Session):
-    """ORM attribute-set + commit: UPDATE with implicit WHERE pk = ?.
-
-    ORM produces: SELECT ... WHERE id = $1 (to load), then
-    UPDATE ... SET col = $1 WHERE id = $2 (on flush).
-    This is the classic ORM "load-modify-save" pattern.
-    """
-    choice = random.randint(0, 2)
-
-    if choice == 0:
-        # Update a customer's last_login.
-        customer = session.get(Customer, random.randint(1, MAX_CUSTOMERS))
-        if customer:
-            customer.last_login = datetime.now(timezone.utc)
-            session.flush()
-
-    elif choice == 1:
-        # Update inventory quantities via ORM (not raw UPDATE).
-        inv = session.get(Inventory, random.randint(1, MAX_VARIANTS))
-        if inv:
-            inv.qty_available = max(0, inv.qty_available + random.randint(-10, 50))
-            inv.updated_at = datetime.now(timezone.utc)
-            session.flush()
-
-    else:
-        # Update order status via ORM.
-        order_id = random.randint(1, MAX_ORDERS)
-        order = session.get(Order, order_id)
-        if order and order.status == "pending":
-            order.status = "processing"
-            order.updated_at = datetime.now(timezone.utc)
-            session.flush()
-
-
-def op_pagination(session: Session):
-    """Paginated queries: LIMIT + OFFSET via ORM.
-
-    ORM produces SELECT ... LIMIT $1 OFFSET $2. Different from raw SQL
-    because the column list and JOIN structure come from ORM model introspection.
-    """
-    choice = random.randint(0, 2)
-
-    if choice == 0:
-        # Paginate products in a category.
-        cat_id = random.randint(1, MAX_CATEGORIES)
-        page = random.randint(0, 10)
-        page_size = 24
-        products = session.scalars(
-            select(Product)
-            .where(Product.category_id == cat_id, Product.status == "active")
-            .order_by(Product.created_at.desc())
-            .limit(page_size)
-            .offset(page * page_size)
-        ).all()
-        _ = len(products)
-
-    elif choice == 1:
-        # Paginate customer orders.
-        customer_id = random.randint(1, MAX_CUSTOMERS)
-        page = random.randint(0, 5)
-        orders = session.scalars(
-            select(Order)
-            .where(Order.customer_id == customer_id)
-            .order_by(Order.placed_at.desc())
-            .limit(20)
-            .offset(page * 20)
-        ).all()
-        _ = len(orders)
-
-    else:
-        # Paginate reviews for a product.
-        product_id = random.randint(1, MAX_PRODUCTS)
-        reviews = session.scalars(
-            select(Review)
-            .where(Review.product_id == product_id)
-            .order_by(Review.created_at.desc())
-            .limit(10)
-            .offset(random.randint(0, 5) * 10)
-        ).all()
-        _ = len(reviews)
-
-
-def op_aggregation(session: Session):
-    """ORM-style aggregation using func().
-
-    Produces SELECT with func.count(), func.sum(), func.avg() —
-    similar intent to raw SQL but wrapped in ORM column expressions.
-    """
-    choice = random.randint(0, 3)
-
-    if choice == 0:
-        # Customer order stats via ORM.
-        customer_id = random.randint(1, MAX_CUSTOMERS)
-        result = session.execute(
-            select(
-                func.count(Order.id),
-                func.coalesce(func.sum(Order.total), 0),
-                func.min(Order.placed_at),
-                func.max(Order.placed_at),
-            ).where(Order.customer_id == customer_id)
-        ).one()
-        _ = result
-
-    elif choice == 1:
-        # Category product counts.
-        results = session.execute(
-            select(
-                Category.id,
-                Category.name,
-                func.count(Product.id).label("product_count"),
-            )
-            .join(Product, Product.category_id == Category.id, isouter=True)
-            .where(Category.parent_id.is_(None))
-            .group_by(Category.id, Category.name)
-            .order_by(func.count(Product.id).desc())
-            .limit(25)
-        ).all()
-        _ = len(results)
-
-    elif choice == 2:
-        # Average review rating per product (top rated).
-        results = session.execute(
-            select(
-                Product.id,
-                Product.name,
-                func.avg(Review.rating).label("avg_rating"),
-                func.count(Review.id).label("review_count"),
-            )
-            .join(Review, Review.product_id == Product.id)
-            .group_by(Product.id, Product.name)
-            .having(func.count(Review.id) >= 5)
-            .order_by(func.avg(Review.rating).desc())
-            .limit(20)
-        ).all()
-        _ = len(results)
-
-    else:
-        # Revenue by day (last 7 days).
-        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-        results = session.execute(
-            select(
-                func.date_trunc("day", Order.placed_at).label("day"),
-                func.count(Order.id),
-                func.sum(Order.total),
-            )
-            .where(Order.placed_at >= cutoff)
-            .group_by(text("1"))
-            .order_by(text("1"))
-        ).all()
-        _ = len(results)
-
-
-def op_exists_filter(session: Session):
-    """EXISTS / has() subquery filters.
-
-    ORM produces correlated subqueries: WHERE EXISTS (SELECT 1 FROM ...).
-    These are structurally different from JOINs and produce unique fingerprints.
-    """
-    choice = random.randint(0, 2)
-
-    if choice == 0:
-        # Products that have at least one review with rating >= 4.
-        products = session.scalars(
-            select(Product)
-            .where(
-                Product.reviews.any(Review.rating >= 4),
-                Product.status == "active",
-            )
-            .limit(20)
-        ).all()
-        _ = len(products)
-
-    elif choice == 1:
-        # Customers who have placed an order in the last 30 days.
-        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-        customers = session.scalars(
-            select(Customer)
-            .where(Customer.orders.any(Order.placed_at >= cutoff))
-            .limit(20)
-        ).all()
-        _ = len(customers)
-
-    else:
-        # Orders that do NOT have a shipment yet.
-        orders = session.scalars(
-            select(Order)
-            .where(
-                ~Order.shipments.any(),
-                Order.status == "processing",
-            )
-            .limit(20)
-        ).all()
-        _ = len(orders)
-
-
-def op_relationship_filter(session: Session):
-    """Relationship-based filtering and traversal.
-
-    Exercises ORM relationship joins that produce different fingerprints from
-    explicit JOIN clauses: session.query().join(Relationship).filter().
-    """
-    choice = random.randint(0, 2)
-
-    if choice == 0:
-        # Find low-stock variants via relationship chain.
-        results = session.scalars(
-            select(ProductVariant)
-            .join(ProductVariant.inventory)
-            .join(ProductVariant.product)
-            .where(
-                Inventory.qty_available < 10,
-                Product.status == "active",
-            )
-            .order_by(Inventory.qty_available.asc())
-            .limit(20)
-        ).all()
-        _ = len(results)
-
-    elif choice == 1:
-        # Customer's cart with product details via relationship chain.
-        session_id = random.randint(1, MAX_SESSIONS)
-        cart = session.scalars(
-            select(CartItem)
-            .options(
-                joinedload(CartItem.variant).joinedload(ProductVariant.product),
-                joinedload(CartItem.variant).joinedload(ProductVariant.inventory),
-            )
-            .where(CartItem.session_id == session_id)
-        ).unique().all()
-        for ci in cart:
-            _ = ci.variant.product.name if ci.variant and ci.variant.product else None
-
-    else:
-        # Orders with their full payment + shipment details.
-        customer_id = random.randint(1, MAX_CUSTOMERS)
-        orders = session.scalars(
-            select(Order)
-            .options(
-                joinedload(Order.payments),
-                joinedload(Order.shipments),
-                joinedload(Order.customer),
-            )
-            .where(Order.customer_id == customer_id)
-            .order_by(Order.placed_at.desc())
-            .limit(5)
-        ).unique().all()
-        for o in orders:
-            _ = (o.customer.name, len(o.payments), len(o.shipments))
+    ).unique().all()
+    _ = len(results)
 
 
 # ── Operation dispatcher ────────────────────────────────────────────────
 
-OPERATIONS = [
-    ("n_plus_1", MIX_N_PLUS_1, op_n_plus_1),
-    ("eager_join", MIX_EAGER_JOIN, op_eager_joinedload),
-    ("eager_subquery", MIX_EAGER_SUBQUERY, op_eager_subqueryload),
-    ("eager_selectin", MIX_EAGER_SELECTIN, op_eager_selectinload),
-    ("bulk_insert", MIX_BULK_INSERT, op_bulk_insert),
-    ("orm_update", MIX_ORM_UPDATE, op_orm_update),
-    ("pagination", MIX_PAGINATION, op_pagination),
-    ("aggregation", MIX_AGGREGATION, op_aggregation),
-    ("exists_filter", MIX_EXISTS_FILTER, op_exists_filter),
-    ("relationship", MIX_RELATIONSHIP, op_relationship_filter),
-]
+OPERATIONS = {
+    "n_plus_1":       op_n_plus_1,
+    "eager_join":     op_eager_join,
+    "eager_subquery": op_eager_subquery,
+    "eager_selectin": op_eager_selectin,
+    "bulk_insert":    op_bulk_insert,
+    "orm_update":     op_orm_update,
+    "pagination":     op_pagination,
+    "aggregation":    op_aggregation,
+    "exists_filter":  op_exists_filter,
+    "relationship":   op_relationship_filter,
+}
 
 # Build cumulative thresholds.
-_thresholds: list[tuple[int, str, callable]] = []
+_thresholds: list[tuple[int, str]] = []
 _cumulative = 0
-for name, weight, fn in OPERATIONS:
+for name, weight in MIX.items():
     _cumulative += weight
-    _thresholds.append((_cumulative, name, fn))
+    _thresholds.append((_cumulative, name))
 _total_weight = _cumulative
 
 
-def pick_operation() -> tuple[str, callable]:
+def pick_operation() -> str:
     r = random.randint(1, _total_weight)
-    for threshold, name, fn in _thresholds:
+    for threshold, name in _thresholds:
         if r <= threshold:
-            return name, fn
-    return _thresholds[-1][1], _thresholds[-1][2]
+            return name
+    return _thresholds[-1][1]
 
 
 # ── Worker ───────────────────────────────────────────────────────────────
 
-
-def worker(session_factory: sessionmaker):
+def worker(ctx: OperationContext):
     while not shutdown.is_set():
-        name, fn = pick_operation()
+        name = pick_operation()
+        fn = OPERATIONS[name]
         try:
-            with session_factory() as session:
-                fn(session)
+            with ctx.models.session_factory() as session:
+                fn(session, ctx)
                 session.commit()
             stats.inc(name)
         except Exception as e:
@@ -595,55 +523,61 @@ def worker(session_factory: sessionmaker):
             if not shutdown.is_set():
                 log.debug("op %s error: %s", name, e)
 
-        # Small random pause between operations.
-        pause = random.uniform(PAUSE_MIN, PAUSE_MAX) / 1000.0  # ms to seconds
+        pause = random.uniform(PAUSE_MIN, PAUSE_MAX) / 1000.0
         shutdown.wait(pause)
 
 
 # ── Wait for data ───────────────────────────────────────────────────────
 
-
 def wait_for_data(engine):
-    log.info("Waiting for seeded data...")
+    log.info("Waiting for database to have data...")
     while not shutdown.is_set():
         try:
             with engine.connect() as conn:
-                count = conn.execute(text("SELECT count(*) FROM customers")).scalar()
+                count = conn.execute(
+                    text("SELECT sum(n_live_tup) FROM pg_stat_user_tables")
+                ).scalar()
                 if count and count > 0:
-                    log.info("Data ready (customers=%d)", count)
+                    log.info("Data ready (%d total rows across all tables)", count)
                     return
         except Exception:
             pass
-        log.info("Data not ready, retrying in 5s...")
+        log.info("No data yet, retrying in 5s...")
         shutdown.wait(5)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
-
 def main():
-    log.info("orm-load: starting SQLAlchemy ORM load generator")
+    log.info("orm-load: starting templatized ORM load generator")
     log.info("config: concurrency=%d pause=%d-%dms", CONCURRENCY, PAUSE_MIN, PAUSE_MAX)
-    log.info("mix: n+1=%d join=%d subq=%d selectin=%d bulk=%d update=%d page=%d agg=%d exists=%d rel=%d",
-             MIX_N_PLUS_1, MIX_EAGER_JOIN, MIX_EAGER_SUBQUERY, MIX_EAGER_SELECTIN,
-             MIX_BULK_INSERT, MIX_ORM_UPDATE, MIX_PAGINATION, MIX_AGGREGATION,
-             MIX_EXISTS_FILTER, MIX_RELATIONSHIP)
 
-    engine = create_engine(
-        PG_CONN,
-        pool_size=CONCURRENCY + 2,
-        max_overflow=5,
-        pool_pre_ping=True,
-        echo=False,
-    )
+    engine = create_engine(PG_CONN, pool_size=CONCURRENCY + 2, max_overflow=5, pool_pre_ping=True)
 
     wait_for_data(engine)
 
-    session_factory = sessionmaker(bind=engine)
+    # Phase 1: Introspect schema.
+    log.info("Introspecting database schema...")
+    profile = introspect_schema(engine)
 
-    # Start healthz server.
-    healthz_thread = threading.Thread(target=serve_healthz, daemon=True)
-    healthz_thread.start()
+    # Phase 2: Reflect ORM models.
+    log.info("Reflecting ORM models...")
+    models = reflect_database(PG_CONN, pool_size=CONCURRENCY + 2)
+
+    # Phase 3: Build operation context.
+    ctx = OperationContext(models, profile)
+
+    log.info("Schema: %d tables, %d relationships, %d FK chains",
+             profile.total_tables, len(profile.relationships), len(ctx.chains_2))
+    log.info("Queryable: %d tables, insertable: %d, updatable: %d, paginable: %d",
+             len(ctx.queryable), len(ctx.insertable), len(ctx.updatable), len(ctx.paginable))
+    log.info("Classification: entity=%s transactional=%s append_only=%s lookup=%s hierarchical=%s",
+             profile.entity_tables, profile.transactional_tables,
+             profile.append_only_tables, profile.lookup_tables, profile.hierarchical_tables)
+
+    # Start healthz.
+    healthz = threading.Thread(target=lambda: HTTPServer(("", 9091), HealthHandler).serve_forever(), daemon=True)
+    healthz.start()
     log.info("healthz: listening on :9091")
 
     # Start stats reporter.
@@ -652,50 +586,39 @@ def main():
             shutdown.wait(STATS_INTERVAL)
             s = stats.snapshot()
             ops = s["ops"]
-            log.info(
-                "stats: n+1=%d join=%d subq=%d selectin=%d bulk=%d update=%d "
-                "page=%d agg=%d exists=%d rel=%d errors=%d",
-                ops["n_plus_1"], ops["eager_join"], ops["eager_subquery"],
-                ops["eager_selectin"], ops["bulk_insert"], ops["orm_update"],
-                ops["pagination"], ops["aggregation"], ops["exists_filter"],
-                ops["relationship"], ops["errors"],
-            )
-
-    stats_thread = threading.Thread(target=report_stats, daemon=True)
-    stats_thread.start()
+            parts = " ".join(f"{k}={v}" for k, v in ops.items() if k != "errors")
+            log.info("stats: %s errors=%d", parts, ops["errors"])
+    threading.Thread(target=report_stats, daemon=True).start()
 
     # Duration limit.
     if DURATION > 0:
-        def duration_timer():
+        def timer():
             shutdown.wait(DURATION)
-            log.info("Duration limit reached (%ds), shutting down...", DURATION)
+            log.info("Duration limit reached (%ds)", DURATION)
             shutdown.set()
-        threading.Thread(target=duration_timer, daemon=True).start()
+        threading.Thread(target=timer, daemon=True).start()
 
     # Launch workers.
     threads = []
     for i in range(CONCURRENCY):
-        t = threading.Thread(target=worker, args=(session_factory,), daemon=True, name=f"worker-{i}")
+        t = threading.Thread(target=worker, args=(ctx,), daemon=True, name=f"worker-{i}")
         t.start()
         threads.append(t)
 
-    log.info("orm-load: %d workers running", CONCURRENCY)
+    log.info("orm-load: %d workers running against %d tables", CONCURRENCY, profile.total_tables)
 
-    # Wait for shutdown.
     try:
         while not shutdown.is_set():
             shutdown.wait(1)
     except KeyboardInterrupt:
         shutdown.set()
 
-    log.info("orm-load: waiting for workers to finish...")
+    log.info("orm-load: shutting down...")
     for t in threads:
         t.join(timeout=5)
 
     engine.dispose()
-    log.info("orm-load: shutdown complete")
-    final = stats.snapshot()
-    log.info("final stats: %s", json.dumps(final["ops"]))
+    log.info("orm-load: done. Final stats: %s", json.dumps(stats.snapshot()["ops"]))
 
 
 if __name__ == "__main__":
