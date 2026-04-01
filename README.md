@@ -66,7 +66,9 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
 ### I have production data:
 
 ```console
-$ git clone https://github.com/dataalgebra-engineering/pg-stress.git
+$ mkdir pg-stress
+$ cd pg-stress
+$ git clone https://github.com/burnside-project/pg-stress.git
 $ cd pg-stress && cp .env.example .env
 $ make import DUMP=/path/to/production.dump
 $ make up INTENSITY=medium
@@ -75,7 +77,7 @@ $ make up INTENSITY=medium
 ### I don't have production data:
 
 ```console
-$ git clone https://github.com/dataalgebra-engineering/pg-stress.git
+$ git clone https://github.com/burnside-project/pg-stress.git
 $ cd pg-stress
 $ make up                        # Seeds 18-table e-commerce schema (~30M rows)
 ```
