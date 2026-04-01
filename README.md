@@ -69,9 +69,20 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
 $ cd pg-stress
 $ git clone https://github.com/burnside-project/pg-stress.git
 $ cd pg-stress && cp .env.example .env
+$ #### place you production data dump file to /path/to/production.dump
 $ make import DUMP=/path/to/production.dump
-$ make up INTENSITY=medium
+$ make up INTENSITY=medium # THIS WILL START pg-stress in medium intensity mode
 ```
+# Clean up old container if you are re-running again
+```console
+$ cd pg-stress
+$ make down # kills old container
+$ docker ps # validate all container gone!
+$ # GO TO ABOVE **console** commands
+
+
+```
+
 
 ### I don't have production data:
 
