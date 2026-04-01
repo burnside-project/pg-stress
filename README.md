@@ -54,7 +54,7 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
 ---
 
 > ### Metrics Dashboard — real-time TPS, cache ratio, connections, table sizes
-> ![Dashboard](assets/dashboard.png)
+> ![Control Panel](assets/260401120541.png)
 
 ---
 
