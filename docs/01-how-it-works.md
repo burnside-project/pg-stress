@@ -1,80 +1,69 @@
 # How It Works
 
-pg-stress is a one-off local stress test that produces LLM-optimized PostgreSQL context.
-Run it on a disposable test server. Get a Claude-powered advisory report. Tear it down.
+pg-stress connects to any PostgreSQL database, introspects the schema,
+and generates stress tests automatically. No configuration files to write.
+No models to map. No queries to define.
 
-## Three Use Cases
-
-```
-USE CASE 1: BYOD (most common)
-  You have production data. Dump it, restore it, stress it.
-
-  pg_dump production → pg_restore on test server
-  Bring your own queries (or let pg-stress introspect)
-  Run stress → capture → ask Claude for advice
-
-USE CASE 2: WHAT IF (on top of BYOD)
-  You have production data AND a hypothesis.
-
-  "What if orders table grows 10M rows?"
-  "What if we get 100+ concurrent connections?"
-  "What if we bulk-update 20M records?"
-
-  pg-stress injects synthetic stress on top of real data
-  and measures what breaks.
-
-USE CASE 3: SEED + STRESS (no production data)
-  You don't have production-scale data yet.
-
-  Pick a workload profile (e-commerce, CRM, SaaS, etc.)
-  pg-stress seeds realistic data at target volume
-  Then runs stress scenarios against it.
-```
-
-## Workflow
+## Three Phases at Startup
 
 ```
-PRODUCTION                    TEST SERVER                   CLAUDE
-──────────                    ───────────                   ──────
-
-1. IMPORT
-pg_dump ────────────────────▶ pg_restore
-                              ANALYZE
-                              Snapshot baseline
-
-                           2. WHAT IF (optional)
-                              Inject 10M rows into orders
-                              Open 100 concurrent connections
-                              Bulk-update 20M records
-                              Run for 10-30 minutes
-
-                           3. CAPTURE
-                              pg_stat_statements (full)
-                              Before/after deltas
-                              Anomalies flagged
-
-                           4. ADVISE ──────────────────▶  Tuning recommendations
-                              Send context bundle           Query fixes
-                              to Claude                     Capacity predictions
-                                                            Breaking point analysis
-                           5. TEARDOWN
-                              Drop database
+YOUR DATABASE
+     │
+     ▼
+1. INTROSPECT
+   Connect to PostgreSQL, discover:
+   ├── Tables, columns, types, PKs
+   ├── Foreign keys → relationship graph
+   ├── FK chains (depth 2-4) for query patterns
+   ├── Row counts → max IDs per table
+   ├── Indexes (btree, gin, gist)
+   └── Classify each table:
+       entity | transactional | append_only | lookup | hierarchical
+     │
+     ▼
+2. REFLECT
+   SQLAlchemy automap_base():
+   ├── ORM classes generated for every table
+   ├── Relationships auto-detected from FK constraints
+   └── Works with 5 tables or 500 tables
+     │
+     ▼
+3. GENERATE LOAD
+   10 ORM patterns applied to discovered schema:
+   ├── N+1 selects on any FK chain
+   ├── Eager JOIN/subquery/selectin on any relationship
+   ├── Bulk INSERT on any append-only table
+   ├── Load-modify-save on any table with timestamps
+   ├── Pagination on any table with ordering columns
+   ├── Aggregation on any numeric column grouped by FK
+   ├── EXISTS subqueries on any parent-child relationship
+   └── Relationship JOINs on any FK path
 ```
 
-## pg-stress vs pg-collector
+## What Gets Classified
 
-| | pg-stress | pg-collector |
+| Signal | Classification | Load Pattern |
 |---|---|---|
-| **When** | One-off, before a change or event | Always running |
-| **Where** | Test server (disposable) | Production |
-| **Data** | Your production dump | Live queries |
-| **Purpose** | "What will happen?" | "What is happening?" |
-| **Output** | LLM context → advisory report | Metric time-series → dashboards |
+| Has FK children + timestamps | **entity** | Read-heavy, relationship traversal |
+| Has status column + updated_at | **transactional** | CRUD + status transitions |
+| Only created_at, no updates | **append_only** | Bulk insert + time-range queries |
+| Small row count, no FK children | **lookup** | Read-only cache-friendly |
+| Self-referencing FK (parent_id) | **hierarchical** | Tree traversal |
 
-## Key Design Rules
+## Two Ways to Use It
 
-1. **Your data first** — production dump is the default, synthetic seed is the fallback
-2. **Test server is disposable** — push past safe limits, find breaking points
-3. **Output is for LLMs** — structured context bundles, not dashboards
-4. **Scenarios are hypothetical** — "what if 3x traffic?", not "replay yesterday"
-5. **One-off** — run, report, tear down
+**BYOD (primary):** Dump production → restore → pg-stress auto-discovers everything.
+
+```bash
+make import DUMP=/tmp/production.dump
+make up INTENSITY=medium
+```
+
+**Seed (demo):** Use the built-in e-commerce schema to test pg-stress itself.
+
+```bash
+make up    # Seeds 30M rows on first run
+```
+
+Both paths produce the same result: pg-stress introspects whatever it finds
+and generates load automatically.
