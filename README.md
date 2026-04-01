@@ -15,7 +15,7 @@
 
 ## What is pg-stress?
 
-A one-off stress testing platform for **any PostgreSQL database**. No models to write.
+A one-off or continous stress testing platform for **any PostgreSQL database**. **Completely safe in a test platform using your own data** No models to write.
 No queries to define. No schema to configure. Point it at your database — pg-stress
 introspects the schema, discovers relationships, classifies tables, and generates
 realistic ORM and SQL load patterns automatically.
