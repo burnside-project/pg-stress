@@ -16,18 +16,17 @@ import logging
 import os
 import random
 import signal
-import sys
 import threading
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from sqlalchemy import create_engine, func, select, text
-from sqlalchemy.orm import Session, joinedload, subqueryload, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload, subqueryload
 
+from introspect import SchemaProfile, introspect_schema
 from models import reflect_database
-from introspect import introspect_schema, SchemaProfile, TableProfile
 
 logging.basicConfig(
     level=logging.INFO,
