@@ -1,8 +1,9 @@
 name: CI
 
+# CI runs on pull requests only.
+# Pushes to main are handled by continuous-delivery.yml (which includes the same CI gates).
+
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 

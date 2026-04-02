@@ -1,0 +1,327 @@
+name: Continuous Delivery
+
+# Fully automated pipeline:
+#   Push to main → CI gates → auto-RC release → multi-arch Docker images → GitHub release
+#
+# Version is read from the VERSION file in the repo root.
+# RC numbers auto-increment: v1.0.0-rc1, v1.0.0-rc2, ...
+# Promote to stable with: gh workflow run release.yml -f version=v1.0.0
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Stage 1: CI Gates (all must pass before RC is created)
+  # ═══════════════════════════════════════════════════════════════════════
+
+  lint-go:
+    name: Lint Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Go vet
+        working-directory: ./load-generator
+        run: go vet ./...
+      - name: Go build
+        working-directory: ./load-generator
+        run: go build -o /dev/null .
+
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install ruff
+          pip install -r load-generator-orm/requirements.txt
+          pip install -r dashboard/requirements.txt
+          pip install -r truth-service/requirements.txt
+      - name: Ruff check (load-generator-orm)
+        run: ruff check load-generator-orm/ --select E,F,I --ignore E501
+      - name: Ruff check (dashboard)
+        run: ruff check dashboard/ --select E,F,I --ignore E501
+      - name: Ruff check (truth-service)
+        run: ruff check truth-service/app/ --select E,F,I --ignore E501
+
+  test-truth:
+    name: Test Truth Service
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        working-directory: ./truth-service
+        run: pip install -r requirements.txt pytest pytest-asyncio
+      - name: Run tests
+        working-directory: ./truth-service
+        run: python -m pytest tests/ -v
+
+  compose-validate:
+    name: Validate Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+      - name: Validate docker-compose.truth.yml
+        run: docker compose -f docker-compose.truth.yml config --quiet
+
+  lint-shell:
+    name: Lint Shell Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+      - name: Shellcheck scripts
+        run: shellcheck scripts/*.sh pgbench-runner/entrypoint.sh || true
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Stage 2: Resolve RC version (after all CI gates pass)
+  # ═══════════════════════════════════════════════════════════════════════
+
+  resolve-rc:
+    name: Resolve RC Version
+    needs: [lint-go, lint-python, test-truth, compose-validate, lint-shell]
+    runs-on: ubuntu-latest
+    outputs:
+      rc_version: ${{ steps.rc.outputs.rc_version }}
+      rc_number: ${{ steps.rc.outputs.rc_number }}
+      base_version: ${{ steps.rc.outputs.base_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine next RC
+        id: rc
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Read version from VERSION file
+          BASE=$(cat VERSION | tr -d '[:space:]')
+          TAG_BASE="v${BASE}"
+
+          # Check if this version already has a stable release
+          if gh release view "$TAG_BASE" --repo ${{ github.repository }} --json tagName --jq '.tagName' 2>/dev/null; then
+            echo "::notice::Stable release ${TAG_BASE} already exists. Bump VERSION file for new RCs."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Find highest existing RC for this version
+          LATEST_RC=$(gh api repos/${{ github.repository }}/git/matching-refs/tags/${TAG_BASE}-rc \
+            --jq '.[].ref' 2>/dev/null \
+            | sed 's|refs/tags/||' \
+            | grep -E "^${TAG_BASE}-rc[0-9]+$" \
+            | sort -t'c' -k2 -n \
+            | tail -1 || true)
+
+          if [ -z "$LATEST_RC" ]; then
+            RC_NUM=1
+          else
+            PREV_NUM=$(echo "$LATEST_RC" | grep -oP 'rc\K[0-9]+')
+            RC_NUM=$((PREV_NUM + 1))
+          fi
+
+          RC_VERSION="${TAG_BASE}-rc${RC_NUM}"
+          echo "rc_version=${RC_VERSION}" >> $GITHUB_OUTPUT
+          echo "rc_number=${RC_NUM}" >> $GITHUB_OUTPUT
+          echo "base_version=${TAG_BASE}" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
+
+          echo "### ${RC_VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "Base: ${TAG_BASE} | RC: ${RC_NUM} | Commit: ${GITHUB_SHA::8}" >> $GITHUB_STEP_SUMMARY
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Stage 3: Build and push multi-arch Docker images
+  # ═══════════════════════════════════════════════════════════════════════
+
+  build-and-push:
+    name: Build ${{ matrix.service }}
+    needs: resolve-rc
+    if: needs.resolve-rc.outputs.rc_version != ''
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: load-generator
+            context: ./load-generator
+          - service: load-generator-orm
+            context: ./load-generator-orm
+          - service: pgbench-runner
+            context: ./pgbench-runner
+          - service: dashboard
+            context: ./dashboard
+          - service: truth-service
+            context: ./truth-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ needs.resolve-rc.outputs.rc_version }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:rc-latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+          labels: |
+            org.opencontainers.image.version=${{ needs.resolve-rc.outputs.rc_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=${{ matrix.service }}
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Stage 4: Create RC release on GitHub
+  # ═══════════════════════════════════════════════════════════════════════
+
+  release-rc:
+    name: Publish RC Release
+    needs: [resolve-rc, build-and-push]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create RC tag
+        run: |
+          RC_VERSION=${{ needs.resolve-rc.outputs.rc_version }}
+          git tag "$RC_VERSION"
+          git push origin "$RC_VERSION"
+
+      - name: Generate release notes
+        run: |
+          RC_VERSION=${{ needs.resolve-rc.outputs.rc_version }}
+          RC_NUM=${{ needs.resolve-rc.outputs.rc_number }}
+          BASE_VERSION=${{ needs.resolve-rc.outputs.base_version }}
+          COMMIT=${GITHUB_SHA::8}
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+
+          {
+            echo "> **Release candidate for ${BASE_VERSION}** — built automatically from \`main\` branch."
+            echo "> Not for production. Stable releases: [latest](https://github.com/${{ github.repository }}/releases/latest)"
+            echo ""
+            echo "## RC ${RC_NUM} · \`${COMMIT}\`"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| **Target** | \`${BASE_VERSION}\` |"
+            echo "| **Commit** | [\`${COMMIT}\`](https://github.com/${{ github.repository }}/commit/${GITHUB_SHA}) |"
+            echo "| **Platforms** | \`linux/amd64\`, \`linux/arm64\` |"
+            echo "| **Trigger** | push to \`main\` |"
+            echo ""
+
+            # Git changelog since last tag
+            if [ -n "$PREV_TAG" ]; then
+              echo "## Changes since ${PREV_TAG}"
+              echo ""
+              git log ${PREV_TAG}..HEAD --pretty=format:"- %s (\`%h\`)" --no-merges | head -50
+              echo ""
+              echo ""
+            fi
+
+            # Unreleased section from CHANGELOG.md if it exists
+            if [ -f CHANGELOG.md ]; then
+              UNRELEASED=$(awk '
+                /^## \[Unreleased\]/ { found=1; next }
+                /^## \[/ { if (found) exit }
+                found { print }
+              ' CHANGELOG.md)
+              if [ -n "$UNRELEASED" ]; then
+                echo "## Planned for ${BASE_VERSION}"
+                echo ""
+                echo "${UNRELEASED}"
+                echo ""
+              fi
+            fi
+
+            echo "## Docker Images"
+            echo ""
+            echo "All images are multi-arch (\`linux/amd64\` + \`linux/arm64\`)."
+            echo ""
+            echo "| Service | Pull command |"
+            echo "|---------|-------------|"
+            for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
+              echo "| ${svc} | \`docker pull ghcr.io/${{ github.repository }}/${svc}:${RC_VERSION}\` |"
+            done
+            echo ""
+            echo '```bash'
+            echo "# Pull all images"
+            echo "for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do"
+            echo "  docker pull ghcr.io/${{ github.repository }}/\${svc}:${RC_VERSION}"
+            echo "done"
+            echo '```'
+            echo ""
+            echo "## Test this RC"
+            echo ""
+            echo '```bash'
+            echo "git clone https://github.com/${{ github.repository }}.git && cd pg-stress"
+            echo "git checkout ${RC_VERSION}"
+            echo "make up-full"
+            echo '```'
+            echo ""
+            echo "## Promote to stable"
+            echo ""
+            echo "Once validated:"
+            echo '```bash'
+            echo "gh workflow run release.yml --repo ${{ github.repository }} -f version=${BASE_VERSION}"
+            echo '```'
+          } > /tmp/release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RC_VERSION=${{ needs.resolve-rc.outputs.rc_version }}
+
+          gh release create "$RC_VERSION" \
+            --repo ${{ github.repository }} \
+            --title "pg-stress ${RC_VERSION}" \
+            --notes-file /tmp/release-notes.md \
+            --target ${{ github.sha }} \
+            --prerelease
+
+          echo "### Published: [${RC_VERSION}](https://github.com/${{ github.repository }}/releases/tag/${RC_VERSION})" >> $GITHUB_STEP_SUMMARY

@@ -1,12 +1,13 @@
-name: Release
+name: Promote to Stable Release
+
+# Promotes a validated RC to a stable release.
+# Usage: gh workflow run release.yml -f version=v1.0.0
 
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g., v1.0.0). Creates tag if it does not exist.'
+        description: 'Stable version tag (e.g., v1.0.0)'
         required: true
         type: string
 
@@ -40,14 +41,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve version
-        id: version
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -59,22 +54,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push (multi-arch)
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ github.event.inputs.version }}
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,scope=${{ matrix.service }},mode=max
           labels: |
-            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.version=${{ github.event.inputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
   release:
-    name: Create Release
+    name: Create Stable Release
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
@@ -82,86 +79,73 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve version
-        id: version
+      - name: Create tag
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/}"
-          fi
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          if [[ "$VERSION" == *"-"* ]]; then
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          else
-            echo "prerelease=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create tag if needed (workflow_dispatch)
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          VERSION=${{ steps.version.outputs.version }}
+          VERSION=${{ github.event.inputs.version }}
           if git rev-parse "$VERSION" >/dev/null 2>&1; then
             echo "Tag $VERSION already exists"
           else
             git tag "$VERSION"
             git push origin "$VERSION"
-            echo "Created and pushed tag $VERSION"
           fi
 
       - name: Generate release notes
         run: |
-          VERSION=${{ steps.version.outputs.version }}
-          PREV_TAG=$(git tag --sort=-creatordate | grep -v "$VERSION" | head -1 || true)
+          VERSION=${{ github.event.inputs.version }}
+          SEMVER="${VERSION#v}"
+          PREV_TAG=$(git tag --sort=-creatordate | grep -v "$VERSION" | grep -v "\-rc" | head -1 || true)
 
           {
-            # Commit changelog
+            # Extract from CHANGELOG.md if available
+            if [ -f CHANGELOG.md ]; then
+              NOTES=$(awk -v ver="$SEMVER" '
+                /^## \[/ {
+                  if (found) exit
+                  if (index($0, "[" ver "]")) found=1
+                  next
+                }
+                found { print }
+              ' CHANGELOG.md)
+              if [ -n "$NOTES" ]; then
+                echo "${NOTES}"
+                echo ""
+              fi
+            fi
+
+            # Commits since last stable release
             if [ -n "$PREV_TAG" ]; then
-              echo "## Changes since ${PREV_TAG}"
+              echo "## All changes since ${PREV_TAG}"
               echo ""
-              git log ${PREV_TAG}..HEAD --pretty=format:"- %s (\`%h\`)" --no-merges | head -50
+              git log ${PREV_TAG}..HEAD --pretty=format:"- %s (\`%h\`)" --no-merges | head -80
               echo ""
               echo ""
             fi
 
             echo "## Docker Images"
             echo ""
-            echo "All images pushed to \`ghcr.io/${{ github.repository }}\`:"
+            echo "Multi-arch: \`linux/amd64\` + \`linux/arm64\`"
             echo ""
-            echo "| Service | Image | Pull |"
-            echo "|---------|-------|------|"
-            echo "| load-generator | Go OLTP workload | \`docker pull ghcr.io/${{ github.repository }}/load-generator:${VERSION}\` |"
-            echo "| load-generator-orm | SQLAlchemy ORM patterns | \`docker pull ghcr.io/${{ github.repository }}/load-generator-orm:${VERSION}\` |"
-            echo "| pgbench-runner | pgbench TPC-B + custom | \`docker pull ghcr.io/${{ github.repository }}/pgbench-runner:${VERSION}\` |"
-            echo "| dashboard | Real-time monitoring UI | \`docker pull ghcr.io/${{ github.repository }}/dashboard:${VERSION}\` |"
-            echo "| truth-service | Metric verification | \`docker pull ghcr.io/${{ github.repository }}/truth-service:${VERSION}\` |"
-            echo ""
-            echo "## Quick Start"
+            echo "| Service | Pull |"
+            echo "|---------|------|"
+            for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
+              echo "| ${svc} | \`docker pull ghcr.io/${{ github.repository }}/${svc}:${VERSION}\` |"
+            done
             echo ""
             echo '```bash'
-            echo "git clone https://github.com/${{ github.repository }}.git"
-            echo "cd pg-stress"
-            echo "git checkout ${VERSION}"
-            echo "make up-full"
-            echo '```'
-            echo ""
-            echo "Or pull images directly:"
-            echo '```bash'
-            echo "# Pull all images for this release"
+            echo "# Pull all images"
             echo "for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do"
             echo "  docker pull ghcr.io/${{ github.repository }}/\${svc}:${VERSION}"
             echo "done"
             echo '```'
             echo ""
-            echo "## Profiles"
+            echo "## Quick Start"
             echo ""
-            echo "| Profile | Command | Services |"
-            echo "|---------|---------|----------|"
-            echo "| Core | \`make up\` | postgres + load-generator + dashboard |"
-            echo "| + ORM | \`make up-orm\` | + SQLAlchemy ORM generator |"
-            echo "| + pgbench | \`make up-bench\` | + pgbench comparison |"
-            echo "| + Collector | \`make up-collector\` | + pg-collector + truth-service |"
-            echo "| Everything | \`make up-full\` | All services |"
+            echo '```bash'
+            echo "git clone https://github.com/${{ github.repository }}.git"
+            echo "cd pg-stress && git checkout ${VERSION}"
+            echo "make up         # Core stack"
+            echo "make up-full    # Everything"
+            echo '```'
             echo ""
             echo "## Intensity Presets"
             echo ""
@@ -176,11 +160,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION=${{ steps.version.outputs.version }}
-          PRERELEASE_FLAG=""
-          if [ "${{ steps.version.outputs.prerelease }}" == "true" ]; then
-            PRERELEASE_FLAG="--prerelease"
-          fi
+          VERSION=${{ github.event.inputs.version }}
 
           # Delete existing release if re-running
           gh release delete "$VERSION" --yes 2>/dev/null || true
@@ -190,6 +170,6 @@ jobs:
             --title "pg-stress ${VERSION}" \
             --notes-file /tmp/release-notes.md \
             --target ${{ github.sha }} \
-            $PRERELEASE_FLAG
+            --latest
 
-          echo "Release published: https://github.com/${{ github.repository }}/releases/tag/${VERSION}"
+          echo "### Stable release published: [${VERSION}](https://github.com/${{ github.repository }}/releases/tag/${VERSION})" >> $GITHUB_STEP_SUMMARY
