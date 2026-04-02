@@ -1,0 +1,211 @@
+name: Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_version:
+        description: 'Target release version (e.g., 1.1.0). RC number is auto-incremented.'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to build from (default: main)'
+        required: false
+        default: 'main'
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  resolve-rc:
+    name: Resolve RC Number
+    runs-on: ubuntu-latest
+    outputs:
+      rc_version: ${{ steps.rc.outputs.rc_version }}
+      rc_number: ${{ steps.rc.outputs.rc_number }}
+    steps:
+      - name: Determine next RC number
+        id: rc
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BASE="v${{ github.event.inputs.base_version }}"
+
+          # Find the highest existing RC tag for this version
+          LATEST_RC=$(gh api repos/${{ github.repository }}/git/matching-refs/tags/${BASE}-rc \
+            --jq '.[].ref' 2>/dev/null \
+            | sed 's|refs/tags/||' \
+            | grep -E "^${BASE}-rc[0-9]+$" \
+            | sort -t'c' -k2 -n \
+            | tail -1 || true)
+
+          if [ -z "$LATEST_RC" ]; then
+            RC_NUM=1
+          else
+            PREV_NUM=$(echo "$LATEST_RC" | grep -oP 'rc\K[0-9]+')
+            RC_NUM=$((PREV_NUM + 1))
+          fi
+
+          RC_VERSION="${BASE}-rc${RC_NUM}"
+          echo "rc_version=${RC_VERSION}" >> $GITHUB_OUTPUT
+          echo "rc_number=${RC_NUM}" >> $GITHUB_OUTPUT
+          echo "### Release Candidate: ${RC_VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "Base version: ${BASE}" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: ${{ github.event.inputs.branch }}" >> $GITHUB_STEP_SUMMARY
+
+  build-and-push:
+    name: Build ${{ matrix.service }}
+    needs: resolve-rc
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: load-generator
+            context: ./load-generator
+          - service: load-generator-orm
+            context: ./load-generator-orm
+          - service: pgbench-runner
+            context: ./pgbench-runner
+          - service: dashboard
+            context: ./dashboard
+          - service: truth-service
+            context: ./truth-service
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ needs.resolve-rc.outputs.rc_version }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+          labels: |
+            org.opencontainers.image.version=${{ needs.resolve-rc.outputs.rc_version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+  release-rc:
+    name: Create RC Release
+    needs:
+      - resolve-rc
+      - build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0
+
+      - name: Create RC tag
+        run: |
+          RC_VERSION=${{ needs.resolve-rc.outputs.rc_version }}
+          if git rev-parse "$RC_VERSION" >/dev/null 2>&1; then
+            echo "Tag $RC_VERSION already exists"
+          else
+            git tag "$RC_VERSION"
+            git push origin "$RC_VERSION"
+            echo "Created and pushed tag $RC_VERSION"
+          fi
+
+      - name: Generate RC release notes
+        run: |
+          RC_VERSION=${{ needs.resolve-rc.outputs.rc_version }}
+          RC_NUM=${{ needs.resolve-rc.outputs.rc_number }}
+          BASE_VERSION="v${{ github.event.inputs.base_version }}"
+          BRANCH="${{ github.event.inputs.branch }}"
+          COMMIT=${GITHUB_SHA::8}
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+
+          {
+            echo "> **This is a release candidate for ${BASE_VERSION}.**"
+            echo "> Not recommended for production use. For stable releases, see [latest release](https://github.com/${{ github.repository }}/releases/latest)."
+            echo ""
+            echo "## Release Candidate ${RC_NUM}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| **Target release** | \`${BASE_VERSION}\` |"
+            echo "| **Branch** | \`${BRANCH}\` |"
+            echo "| **Commit** | \`${COMMIT}\` |"
+            echo "| **RC number** | ${RC_NUM} |"
+            echo ""
+
+            # Changelog since last tag
+            if [ -n "$PREV_TAG" ]; then
+              echo "## Changes since ${PREV_TAG}"
+              echo ""
+              git log ${PREV_TAG}..HEAD --pretty=format:"- %s (\`%h\`)" --no-merges | head -50
+              echo ""
+              echo ""
+            fi
+
+            echo "## Docker Images"
+            echo ""
+            echo "| Service | Pull |"
+            echo "|---------|------|"
+            echo "| load-generator | \`docker pull ghcr.io/${{ github.repository }}/load-generator:${RC_VERSION}\` |"
+            echo "| load-generator-orm | \`docker pull ghcr.io/${{ github.repository }}/load-generator-orm:${RC_VERSION}\` |"
+            echo "| pgbench-runner | \`docker pull ghcr.io/${{ github.repository }}/pgbench-runner:${RC_VERSION}\` |"
+            echo "| dashboard | \`docker pull ghcr.io/${{ github.repository }}/dashboard:${RC_VERSION}\` |"
+            echo "| truth-service | \`docker pull ghcr.io/${{ github.repository }}/truth-service:${RC_VERSION}\` |"
+            echo ""
+            echo "## Testing this RC"
+            echo ""
+            echo '```bash'
+            echo "# Pull RC images"
+            echo "for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do"
+            echo "  docker pull ghcr.io/${{ github.repository }}/\${svc}:${RC_VERSION}"
+            echo "done"
+            echo ""
+            echo "# Or test from source"
+            echo "git clone https://github.com/${{ github.repository }}.git"
+            echo "cd pg-stress && git checkout ${RC_VERSION}"
+            echo "make up-full"
+            echo '```'
+            echo ""
+            echo "## Promote to stable"
+            echo ""
+            echo "Once validated, promote this RC to a stable release:"
+            echo '```bash'
+            echo "gh workflow run release.yml --repo ${{ github.repository }} -f version=${BASE_VERSION}"
+            echo '```'
+          } > /tmp/release-notes.md
+
+      - name: Create RC Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RC_VERSION=${{ needs.resolve-rc.outputs.rc_version }}
+
+          # Delete existing release if re-running
+          gh release delete "$RC_VERSION" --yes 2>/dev/null || true
+
+          gh release create "$RC_VERSION" \
+            --repo ${{ github.repository }} \
+            --title "pg-stress ${RC_VERSION}" \
+            --notes-file /tmp/release-notes.md \
+            --target ${{ github.sha }} \
+            --prerelease
+
+          echo "### RC Release published" >> $GITHUB_STEP_SUMMARY
+          echo "https://github.com/${{ github.repository }}/releases/tag/${RC_VERSION}" >> $GITHUB_STEP_SUMMARY

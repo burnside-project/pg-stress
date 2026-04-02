@@ -2,69 +2,194 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0). Creates tag if it does not exist.'
+        required: true
+        type: string
 
 permissions:
   contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
 
 jobs:
+  build-and-push:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: load-generator
+            context: ./load-generator
+          - service: load-generator-orm
+            context: ./load-generator-orm
+          - service: pgbench-runner
+            context: ./pgbench-runner
+          - service: dashboard
+            context: ./dashboard
+          - service: truth-service
+            context: ./truth-service
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
   release:
     name: Create Release
+    needs: build-and-push
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Build all images
+      - name: Resolve version
+        id: version
         run: |
-          docker compose build postgres load-generator dashboard
-          docker compose --profile orm build
-          docker compose --profile pgbench build
-
-      - name: Generate release notes
-        id: notes
-        run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          PREV_TAG=$(git tag --sort=-creatordate | head -2 | tail -1)
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-
-          cat > release_notes.md <<'EOF'
-          ## What's Changed
-
-          ### Services
-          - **load-generator** — Go OLTP load generator with burst scheduling and chaos injection
-          - **load-generator-orm** — SQLAlchemy ORM pattern generator (10 query patterns)
-          - **pgbench-runner** — pgbench comparison with TPC-B + custom e-commerce scripts
-          - **dashboard** — Real-time monitoring UI with safety auto-pruning
-          - **truth-service** — Metric verification against PostgreSQL ground truth
-
-          ### Quick Start
-          ```bash
-          git clone https://github.com/dataalgebra-engineering/pg-stress.git
-          cd pg-stress
-          make up-full
-          ```
-
-          ### Profiles
-          | Profile | Command |
-          |---------|---------|
-          | Core | `make up` |
-          | + ORM | `make up-orm` |
-          | + pgbench | `make up-bench` |
-          | + Collector | `make up-collector` |
-          | Everything | `make up-full` |
-          EOF
-
-          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$TAG" ]; then
-            echo "" >> release_notes.md
-            echo "### Commits since ${PREV_TAG}" >> release_notes.md
-            git log ${PREV_TAG}..${TAG} --oneline --no-merges >> release_notes.md
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          if [[ "$VERSION" == *"-"* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: release_notes.md
-          generate_release_notes: true
+      - name: Create tag if needed (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists"
+          else
+            git tag "$VERSION"
+            git push origin "$VERSION"
+            echo "Created and pushed tag $VERSION"
+          fi
+
+      - name: Generate release notes
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          PREV_TAG=$(git tag --sort=-creatordate | grep -v "$VERSION" | head -1 || true)
+
+          {
+            # Commit changelog
+            if [ -n "$PREV_TAG" ]; then
+              echo "## Changes since ${PREV_TAG}"
+              echo ""
+              git log ${PREV_TAG}..HEAD --pretty=format:"- %s (\`%h\`)" --no-merges | head -50
+              echo ""
+              echo ""
+            fi
+
+            echo "## Docker Images"
+            echo ""
+            echo "All images pushed to \`ghcr.io/${{ github.repository }}\`:"
+            echo ""
+            echo "| Service | Image | Pull |"
+            echo "|---------|-------|------|"
+            echo "| load-generator | Go OLTP workload | \`docker pull ghcr.io/${{ github.repository }}/load-generator:${VERSION}\` |"
+            echo "| load-generator-orm | SQLAlchemy ORM patterns | \`docker pull ghcr.io/${{ github.repository }}/load-generator-orm:${VERSION}\` |"
+            echo "| pgbench-runner | pgbench TPC-B + custom | \`docker pull ghcr.io/${{ github.repository }}/pgbench-runner:${VERSION}\` |"
+            echo "| dashboard | Real-time monitoring UI | \`docker pull ghcr.io/${{ github.repository }}/dashboard:${VERSION}\` |"
+            echo "| truth-service | Metric verification | \`docker pull ghcr.io/${{ github.repository }}/truth-service:${VERSION}\` |"
+            echo ""
+            echo "## Quick Start"
+            echo ""
+            echo '```bash'
+            echo "git clone https://github.com/${{ github.repository }}.git"
+            echo "cd pg-stress"
+            echo "git checkout ${VERSION}"
+            echo "make up-full"
+            echo '```'
+            echo ""
+            echo "Or pull images directly:"
+            echo '```bash'
+            echo "# Pull all images for this release"
+            echo "for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do"
+            echo "  docker pull ghcr.io/${{ github.repository }}/\${svc}:${VERSION}"
+            echo "done"
+            echo '```'
+            echo ""
+            echo "## Profiles"
+            echo ""
+            echo "| Profile | Command | Services |"
+            echo "|---------|---------|----------|"
+            echo "| Core | \`make up\` | postgres + load-generator + dashboard |"
+            echo "| + ORM | \`make up-orm\` | + SQLAlchemy ORM generator |"
+            echo "| + pgbench | \`make up-bench\` | + pgbench comparison |"
+            echo "| + Collector | \`make up-collector\` | + pg-collector + truth-service |"
+            echo "| Everything | \`make up-full\` | All services |"
+            echo ""
+            echo "## Intensity Presets"
+            echo ""
+            echo '```bash'
+            echo "make up INTENSITY=low      # Light load"
+            echo "make up INTENSITY=medium   # Default"
+            echo "make up INTENSITY=high     # Stress test"
+            echo '```'
+          } > /tmp/release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          PRERELEASE_FLAG=""
+          if [ "${{ steps.version.outputs.prerelease }}" == "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          # Delete existing release if re-running
+          gh release delete "$VERSION" --yes 2>/dev/null || true
+
+          gh release create "$VERSION" \
+            --repo ${{ github.repository }} \
+            --title "pg-stress ${VERSION}" \
+            --notes-file /tmp/release-notes.md \
+            --target ${{ github.sha }} \
+            $PRERELEASE_FLAG
+
+          echo "Release published: https://github.com/${{ github.repository }}/releases/tag/${VERSION}"
