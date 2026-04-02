@@ -8,8 +8,29 @@ All settings via environment variables in `.env`. Copy `.env.example` to `.env`.
 |----------|---------|-------------|
 | `PG_USER` | `postgres` | PostgreSQL user (all services read this) |
 | `PG_PASSWORD` | `postgres` | PostgreSQL password |
-| `PG_DATABASE` | `testdb` | Database name |
+| `PG_DATABASE` | `testdb` | Database name — change this to test any database |
 | `PG_PORT` | `5434` | Host-mapped port |
+
+Example — test a database called `soak_test`:
+
+```bash
+# .env
+PG_DATABASE=soak_test
+SEED_SCHEMA=false          # skip built-in e-commerce schema
+```
+
+## Schema Seeding
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SEED_SCHEMA` | `true` | Set to `false` to skip the built-in 18-table e-commerce schema |
+
+When `SEED_SCHEMA=true` (default), the built-in e-commerce schema (~30M rows) is loaded
+on first startup. Set to `false` when:
+
+- Using BYOD (`make import DUMP=...`) — your dump already has its own schema
+- Connecting to a database that already has tables
+- You only want an empty database to populate yourself
 
 ## Intensity
 

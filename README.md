@@ -86,6 +86,16 @@ See [Releases](https://github.com/dataalgebra-engineering/pg-stress/releases) fo
 ```console
 $ git clone https://github.com/dataalgebra-engineering/pg-stress.git
 $ cd pg-stress && cp .env.example .env
+```
+
+Edit `.env`:
+
+```bash
+PG_DATABASE=my_production_db
+SEED_SCHEMA=false                # skip built-in e-commerce schema
+```
+
+```console
 $ make import DUMP=/path/to/production.dump
 $ make up INTENSITY=medium
 ```
@@ -119,10 +129,11 @@ No configuration. No model definitions. Works with 5 tables or 500.
 
 ### 1. Database Target (`.env`)
 
-```
+```bash
 PG_USER=myuser
 PG_PASSWORD=mypass
 PG_DATABASE=mydb
+SEED_SCHEMA=false              # skip built-in schema when using your own data
 ```
 
 ### 2. Intensity (CLI or UI)

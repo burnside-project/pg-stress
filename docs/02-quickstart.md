@@ -28,17 +28,21 @@ See [Releases & CI/CD](06-releases.md) for version pinning and stable releases.
 ```bash
 git clone https://github.com/dataalgebra-engineering/pg-stress.git
 cd pg-stress
-cp .env.example .env     # Edit PG_USER, PG_PASSWORD if needed
+cp .env.example .env
+```
 
-# Start PostgreSQL
-docker compose up -d postgres
+Edit `.env` to point at your database:
 
-# Restore your dump
-docker compose exec -T postgres pg_restore \
-  -U postgres -d testdb --jobs=4 --no-owner < /path/to/dump.sql
-docker compose exec -T postgres psql -U postgres -d testdb -c "ANALYZE"
+```bash
+# .env
+PG_DATABASE=my_production_db
+SEED_SCHEMA=false              # skip built-in e-commerce schema
+```
 
-# Start everything
+Then import and start:
+
+```bash
+make import DUMP=/path/to/production.dump
 make up INTENSITY=medium
 ```
 

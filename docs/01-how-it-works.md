@@ -55,6 +55,12 @@ YOUR DATABASE
 **BYOD (primary):** Dump production → restore → pg-stress auto-discovers everything.
 
 ```bash
+# .env
+PG_DATABASE=my_production_db
+SEED_SCHEMA=false
+```
+
+```bash
 make import DUMP=/tmp/production.dump
 make up INTENSITY=medium
 ```
@@ -62,7 +68,7 @@ make up INTENSITY=medium
 **Seed (demo):** Use the built-in e-commerce schema to test pg-stress itself.
 
 ```bash
-make up    # Seeds 30M rows on first run
+make up    # SEED_SCHEMA=true by default, seeds 30M rows on first run
 ```
 
 Both paths produce the same result: pg-stress introspects whatever it finds
