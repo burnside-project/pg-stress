@@ -1,8 +1,7 @@
 import json
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
-from app.jsonl_reader import JSONLReader, CollectorSample
+from app.jsonl_reader import CollectorSample, JSONLReader
 
 
 def test_find_latest_sample(sample_jsonl_dir):

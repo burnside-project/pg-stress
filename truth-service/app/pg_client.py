@@ -1,5 +1,6 @@
-import asyncpg
 from datetime import datetime, timezone
+
+import asyncpg
 
 # Exact same query as internal/sampler/database.go lines 11-32
 DATABASE_QUERY = """

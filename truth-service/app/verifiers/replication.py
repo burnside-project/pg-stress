@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.models import VerificationResult, Verdict, SnapshotData
+from app.models import SnapshotData, Verdict, VerificationResult
 from app.verifiers.base import BaseVerifier
 
 

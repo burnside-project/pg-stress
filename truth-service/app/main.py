@@ -1,20 +1,20 @@
 import asyncio
 import sys
+from contextlib import asynccontextmanager
 
 import uvicorn
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 
 from app.config import Settings
+from app.jsonl_reader import JSONLReader
 from app.models import VerificationResult
 from app.pg_client import PGClient
-from app.jsonl_reader import JSONLReader
+from app.report import write_reports
 from app.verifiers import VERIFIER_REGISTRY
 from app.verifiers.cache_memory import CacheMemoryVerifier
-from app.verifiers.wal_checkpoints import WALCheckpointsVerifier
 from app.verifiers.locks import LocksVerifier
 from app.verifiers.replication import ReplicationVerifier
-from app.report import write_reports
+from app.verifiers.wal_checkpoints import WALCheckpointsVerifier
 
 settings = Settings()
 

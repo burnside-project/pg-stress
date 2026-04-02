@@ -3,9 +3,9 @@ import time
 from datetime import datetime, timezone
 
 from app.config import Settings
-from app.models import VerificationResult, Verdict, Assertion, SnapshotData
-from app.pg_client import PGClient
 from app.jsonl_reader import JSONLReader
+from app.models import Assertion, SnapshotData, Verdict, VerificationResult
+from app.pg_client import PGClient
 from app.verifiers.base import BaseVerifier
 
 

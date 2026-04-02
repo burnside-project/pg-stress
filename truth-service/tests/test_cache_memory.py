@@ -1,11 +1,11 @@
-import pytest
-from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from app.config import Settings
+from app.jsonl_reader import CollectorSample, JSONLReader
 from app.models import Verdict
 from app.pg_client import PGClient
-from app.jsonl_reader import JSONLReader, CollectorSample
 from app.verifiers.cache_memory import CacheMemoryVerifier
 
 

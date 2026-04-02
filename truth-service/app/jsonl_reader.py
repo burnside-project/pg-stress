@@ -1,7 +1,6 @@
 import json
-import os
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 
