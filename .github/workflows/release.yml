@@ -1,11 +1,23 @@
-name: Promote to Stable
+name: Release
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Stable version tag (e.g., v1.0.0)'
+      type:
+        description: 'Release type'
         required: true
+        type: choice
+        options:
+          - rc
+          - stable
+      version:
+        description: 'Version (e.g., 1.0.0). For RC: auto-increments rc1/rc2/... For stable: creates v1.0.0'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to build from (default: main)'
+        required: false
+        default: 'main'
         type: string
 
 permissions:
@@ -17,8 +29,58 @@ env:
   IMAGE_PREFIX: ghcr.io/${{ github.repository }}
 
 jobs:
-  build-and-push:
+
+  # ─── Resolve version tag ──────────────────────────────────────────────
+
+  resolve:
+    name: Resolve Version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      is_rc: ${{ steps.resolve.outputs.is_rc }}
+      rc_number: ${{ steps.resolve.outputs.rc_number }}
+    steps:
+      - name: Determine tag
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BASE="v${{ github.event.inputs.version }}"
+          TYPE="${{ github.event.inputs.type }}"
+
+          if [ "$TYPE" == "stable" ]; then
+            echo "tag=${BASE}" >> $GITHUB_OUTPUT
+            echo "is_rc=false" >> $GITHUB_OUTPUT
+            echo "rc_number=" >> $GITHUB_OUTPUT
+            echo "### Stable release: ${BASE}" >> $GITHUB_STEP_SUMMARY
+          else
+            # Find highest existing RC and increment
+            LATEST_RC=$(gh api repos/${{ github.repository }}/git/matching-refs/tags/${BASE}-rc \
+              --jq '.[].ref' 2>/dev/null \
+              | sed 's|refs/tags/||' \
+              | grep -E "^${BASE}-rc[0-9]+$" \
+              | sort -t'c' -k2 -n \
+              | tail -1 || true)
+
+            if [ -z "$LATEST_RC" ]; then
+              RC_NUM=1
+            else
+              PREV_NUM=$(echo "$LATEST_RC" | grep -oP 'rc\K[0-9]+')
+              RC_NUM=$((PREV_NUM + 1))
+            fi
+
+            TAG="${BASE}-rc${RC_NUM}"
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+            echo "is_rc=true" >> $GITHUB_OUTPUT
+            echo "rc_number=${RC_NUM}" >> $GITHUB_OUTPUT
+            echo "### Release candidate: ${TAG}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # ─── Build and push multi-arch images ─────────────────────────────────
+
+  build:
     name: Build ${{ matrix.service }}
+    needs: resolve
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -36,6 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.inputs.branch }}
           fetch-depth: 0
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -44,62 +107,100 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Determine image tags
+        id: tags
+        run: |
+          TAG="${{ needs.resolve.outputs.tag }}"
+          IS_RC="${{ needs.resolve.outputs.is_rc }}"
+          PREFIX="${{ env.IMAGE_PREFIX }}/${{ matrix.service }}"
+          if [ "$IS_RC" == "true" ]; then
+            echo "tags=${PREFIX}:${TAG},${PREFIX}:rc-latest" >> $GITHUB_OUTPUT
+          else
+            echo "tags=${PREFIX}:${TAG},${PREFIX}:latest" >> $GITHUB_OUTPUT
+          fi
       - uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ github.event.inputs.version }}
-            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
+          tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,scope=${{ matrix.service }},mode=max
           labels: |
-            org.opencontainers.image.version=${{ github.event.inputs.version }}
+            org.opencontainers.image.version=${{ needs.resolve.outputs.tag }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
+  # ─── Publish release + update docs ────────────────────────────────────
+
   publish:
-    name: Publish Stable Release
-    needs: build-and-push
+    name: Publish Release
+    needs: [resolve, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.inputs.branch }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create tag
         run: |
-          VERSION=${{ github.event.inputs.version }}
-          if git rev-parse "$VERSION" >/dev/null 2>&1; then
-            echo "Tag $VERSION already exists"
+          TAG=${{ needs.resolve.outputs.tag }}
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists"
           else
-            git tag "$VERSION"
-            git push origin "$VERSION"
+            git tag "$TAG"
+            git push origin "$TAG"
           fi
 
       - name: Generate release notes
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          IS_RC: ${{ needs.resolve.outputs.is_rc }}
+          RC_NUM: ${{ needs.resolve.outputs.rc_number }}
+          REPO: ${{ github.repository }}
         run: |
-          VERSION=${{ github.event.inputs.version }}
-          SEMVER="${VERSION#v}"
-          PREV_TAG=$(git tag --sort=-creatordate | grep -v "$VERSION" | grep -v "\-rc" | head -1 || true)
+          BASE="v${{ github.event.inputs.version }}"
+          BRANCH="${{ github.event.inputs.branch }}"
+          COMMIT=${GITHUB_SHA::8}
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
 
           {
-            if [ -f CHANGELOG.md ]; then
-              NOTES=$(awk -v ver="$SEMVER" '/^## \[/{if(f)exit;if(index($0,"["ver"]"))f=1;next}f' CHANGELOG.md)
-              [ -n "$NOTES" ] && echo "${NOTES}" && echo ""
+            if [ "$IS_RC" == "true" ]; then
+              echo "> **Release candidate for ${BASE}** — built on-demand from \`${BRANCH}\`."
+              echo "> Not for production. Stable releases: [latest](https://github.com/${REPO}/releases/latest)"
+              echo ""
+              echo "## RC ${RC_NUM} · \`${COMMIT}\`"
+              echo ""
+              echo "| | |"
+              echo "|---|---|"
+              echo "| **Target** | \`${BASE}\` |"
+              echo "| **Branch** | \`${BRANCH}\` |"
+              echo "| **Commit** | [\`${COMMIT}\`](https://github.com/${REPO}/commit/${GITHUB_SHA}) |"
+              echo "| **Platforms** | \`linux/amd64\`, \`linux/arm64\` |"
+            else
+              echo "## ${TAG}"
+              echo ""
+
+              # Extract from CHANGELOG.md if available
+              SEMVER="${TAG#v}"
+              if [ -f CHANGELOG.md ]; then
+                NOTES=$(awk -v ver="$SEMVER" '/^## \[/{if(f)exit;if(index($0,"["ver"]"))f=1;next}f' CHANGELOG.md)
+                [ -n "$NOTES" ] && echo "${NOTES}" && echo ""
+              fi
             fi
 
+            # Git changelog since last tag
             if [ -n "$PREV_TAG" ]; then
-              echo "## All changes since ${PREV_TAG}"
               echo ""
-              git log ${PREV_TAG}..HEAD --pretty=format:"- %s (\`%h\`)" --no-merges | head -80
+              echo "## Changes since ${PREV_TAG}"
               echo ""
+              git log ${PREV_TAG}..HEAD --pretty=format:"- %s (\`%h\`)" --no-merges | head -50
             fi
 
+            echo ""
             echo ""
             echo "## Docker Images"
             echo ""
@@ -108,35 +209,61 @@ jobs:
             echo "| Service | Pull |"
             echo "|---------|------|"
             for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
-              echo "| ${svc} | \`docker pull ghcr.io/${{ github.repository }}/${svc}:${VERSION}\` |"
+              echo "| ${svc} | \`docker pull ghcr.io/${REPO}/${svc}:${TAG}\` |"
             done
-            echo ""
-            echo "## Quick Start"
-            echo ""
-            echo '```bash'
-            echo "git clone https://github.com/${{ github.repository }}.git"
-            echo "cd pg-stress && git checkout ${VERSION}"
-            echo "make up-full"
-            echo '```'
+
+            if [ "$IS_RC" == "true" ]; then
+              echo ""
+              echo "## Test this RC"
+              echo ""
+              echo '```bash'
+              echo "git clone https://github.com/${REPO}.git && cd pg-stress"
+              echo "git checkout ${TAG}"
+              echo "make up-full"
+              echo '```'
+              echo ""
+              echo "## Promote to stable"
+              echo ""
+              echo "Once validated, run the Release workflow with type=\`stable\` and version=\`${{ github.event.inputs.version }}\`"
+            else
+              echo ""
+              echo "## Quick Start"
+              echo ""
+              echo '```bash'
+              echo "git clone https://github.com/${REPO}.git"
+              echo "cd pg-stress && git checkout ${TAG}"
+              echo "make up-full"
+              echo '```'
+            fi
           } > /tmp/release-notes.md
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          IS_RC: ${{ needs.resolve.outputs.is_rc }}
         run: |
-          VERSION=${{ github.event.inputs.version }}
-          gh release delete "$VERSION" --yes 2>/dev/null || true
-          gh release create "$VERSION" \
+          gh release delete "$TAG" --yes 2>/dev/null || true
+
+          FLAGS=""
+          if [ "$IS_RC" == "true" ]; then
+            FLAGS="--prerelease"
+          else
+            FLAGS="--latest"
+          fi
+
+          gh release create "$TAG" \
             --repo ${{ github.repository }} \
-            --title "pg-stress ${VERSION}" \
+            --title "pg-stress ${TAG}" \
             --notes-file /tmp/release-notes.md \
             --target ${{ github.sha }} \
-            --latest
+            $FLAGS
 
-      - name: Update docs with stable release
+      - name: Update docs
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ github.event.inputs.version }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          IS_RC: ${{ needs.resolve.outputs.is_rc }}
           REPO: ${{ github.repository }}
         run: |
           DATE=$(date -u '+%Y-%m-%d')
@@ -151,54 +278,74 @@ jobs:
           done < <(gh release list --repo "${REPO}" --limit 20 --json tagName,isPrerelease,publishedAt \
             --jq '.[] | [.tagName, (if .isPrerelease then "RC" else "**Stable**" end), .publishedAt[:10]] | @tsv')
 
+          STABLE=$(gh release list --repo "${REPO}" --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
+
           # ── RELEASES.md ──
-          cat > RELEASES.md << EOF
-          # Release History
+          {
+            echo "# Release History"
+            echo ""
+            echo "*Auto-generated by CI/CD pipeline. Do not edit manually.*"
+            echo ""
+            echo "## Current"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
 
-          *Auto-generated by CI/CD pipeline. Do not edit manually.*
+            if [ "$IS_RC" == "true" ]; then
+              echo "| **Latest RC** | [\`${TAG}\`](${RELEASES_URL}/tag/${TAG}) |"
+              echo "| **Target** | \`v${{ github.event.inputs.version }}\` |"
+            fi
+            if [ -n "$STABLE" ]; then
+              echo "| **Latest stable** | [\`${STABLE}\`](${RELEASES_URL}/tag/${STABLE}) |"
+            fi
+            echo "| **Date** | ${DATE} |"
+            echo "| **Platforms** | \`linux/amd64\`, \`linux/arm64\` |"
 
-          ## Current
+            echo ""
+            echo "## Install"
+            echo ""
 
-          | | |
-          |---|---|
-          | **Latest stable** | [\`${VERSION}\`](${RELEASES_URL}/tag/${VERSION}) |
-          | **Date** | ${DATE} |
-          | **Platforms** | \`linux/amd64\`, \`linux/arm64\` |
+            if [ -n "$STABLE" ]; then
+              echo '```bash'
+              echo "# Stable"
+              echo "for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do"
+              echo "  docker pull ${GHCR}/\${svc}:${STABLE}"
+              echo "done"
+              echo '```'
+              echo ""
+            fi
 
-          ## Install
+            if [ "$IS_RC" == "true" ]; then
+              echo '```bash'
+              echo "# Latest RC"
+              echo "for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do"
+              echo "  docker pull ${GHCR}/\${svc}:${TAG}"
+              echo "done"
+              echo '```'
+              echo ""
+            fi
 
-          \`\`\`bash
-          for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
-            docker pull ${GHCR}/\${svc}:${VERSION}
+            echo "## All Releases"
+            echo ""
+            echo "| Version | Type | Date |"
+            echo "|---------|------|------|"
+            echo "${RELEASE_ROWS}"
+          } > RELEASES.md
+
+          # ── Update version references in all docs ──
+          sed -i "s|${GHCR}/load-generator:[^ \`]*|${GHCR}/load-generator:${TAG}|g" README.md
+          for f in docs/02-quickstart.md docs/06-releases.md; do
+            if [ -f "$f" ]; then
+              sed -i "s|${GHCR}/load-generator:[^ \`]*|${GHCR}/load-generator:${TAG}|g" "$f"
+              sed -i "s|${GHCR}/dashboard:[^ \`]*|${GHCR}/dashboard:${TAG}|g" "$f"
+            fi
           done
-          \`\`\`
 
-          ## All Releases
-
-          | Version | Type | Date |
-          |---------|------|------|
-          ${RELEASE_ROWS}
-          EOF
-
-          # ── README.md ──
-          sed -i "s|${GHCR}/load-generator:[^ \`]*|${GHCR}/load-generator:${VERSION}|g" README.md
-
-          # ── docs/02-quickstart.md ──
-          if [ -f docs/02-quickstart.md ]; then
-            sed -i "s|${GHCR}/load-generator:[^ \`]*|${GHCR}/load-generator:${VERSION}|g" docs/02-quickstart.md
-          fi
-
-          # ── docs/06-releases.md ──
-          if [ -f docs/06-releases.md ]; then
-            sed -i "s|${GHCR}/load-generator:[^ \`]*|${GHCR}/load-generator:${VERSION}|g" docs/06-releases.md
-            sed -i "s|${GHCR}/dashboard:[^ \`]*|${GHCR}/dashboard:${VERSION}|g" docs/06-releases.md
-          fi
-
-      - name: Commit docs update
+      - name: Commit docs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add RELEASES.md README.md docs/
           git diff --cached --quiet && exit 0
-          git commit -m "docs: update release info to ${{ github.event.inputs.version }} [skip ci]"
-          git push origin main
+          git commit -m "docs: update release info to ${{ needs.resolve.outputs.tag }} [skip ci]"
+          git push origin ${{ github.event.inputs.branch }}
