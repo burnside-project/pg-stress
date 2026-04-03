@@ -8,8 +8,9 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/dataalgebra-engineering/pg-stress/actions/workflows/continuous-delivery.yml"><img src="https://github.com/dataalgebra-engineering/pg-stress/actions/workflows/continuous-delivery.yml/badge.svg" alt="CI/CD"></a>
+  <a href="https://github.com/dataalgebra-engineering/pg-stress/releases/latest"><img src="https://img.shields.io/github/v/release/dataalgebra-engineering/pg-stress?include_prereleases&label=release" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
-  <a href="https://github.com/dataalgebra-engineering/pg-stress"><img src="https://img.shields.io/github/downloads/dataalgebra-engineering/pg-stress/total" alt="Downloads"></a>
   <a href="https://claude.ai"><img src="https://img.shields.io/badge/AI%20Powered-Claude%20Code-blueviolet" alt="AI Powered"></a>
 </p>
 
@@ -57,6 +58,26 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
 > ![Dashboard](assets/dashboard.png)
 
 ---
+
+## Install
+
+Every push to `main` builds multi-arch Docker images (`linux/amd64` + `linux/arm64`)
+and publishes them to GHCR with an auto-incremented release candidate tag.
+
+```bash
+# Pull latest RC images
+for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
+  docker pull ghcr.io/dataalgebra-engineering/pg-stress/${svc}:rc-latest
+done
+```
+
+Or pin to a specific version:
+
+```bash
+docker pull ghcr.io/dataalgebra-engineering/pg-stress/load-generator:v1.0.0-rc2
+```
+
+See [Releases](https://github.com/dataalgebra-engineering/pg-stress/releases) for all versions and changelogs.
 
 ## Quickstart
 
@@ -213,6 +234,7 @@ locks, wait events, and current PG settings.
 | [Schema Introspection](docs/03-introspection.md) | What gets discovered, table classification, FK chains |
 | [Control Plane](docs/04-control-plane.md) | API endpoints, intensity presets, WHAT IF operations |
 | [Configuration](docs/05-configuration.md) | All environment variables |
+| [Releases & CI/CD](docs/06-releases.md) | Automated pipeline, versioning, Docker images, promoting RCs |
 
 ## pg-stress vs pg-collector
 

@@ -9,6 +9,20 @@
 | Disk (free) | 20 GB |
 | Memory (free) | 4 GB |
 
+## Docker Images
+
+All services are published as multi-arch Docker images (`linux/amd64` + `linux/arm64`)
+to GitHub Container Registry. New images are built automatically on every push to `main`.
+
+```bash
+# Pull latest release candidate
+for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
+  docker pull ghcr.io/dataalgebra-engineering/pg-stress/${svc}:rc-latest
+done
+```
+
+See [Releases & CI/CD](06-releases.md) for version pinning and stable releases.
+
 ## Path A: I Have Production Data
 
 ```bash
