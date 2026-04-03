@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dataalgebra-engineering/pg-stress/actions/workflows/continuous-delivery.yml"><img src="https://github.com/dataalgebra-engineering/pg-stress/actions/workflows/continuous-delivery.yml/badge.svg" alt="CI/CD"></a>
+  <a href="https://github.com/dataalgebra-engineering/pg-stress/actions/workflows/ci-cd.yml"><img src="https://github.com/dataalgebra-engineering/pg-stress/actions/workflows/ci-cd.yml/badge.svg" alt="CI/CD"></a>
   <a href="https://github.com/dataalgebra-engineering/pg-stress/releases/latest"><img src="https://img.shields.io/github/v/release/dataalgebra-engineering/pg-stress?include_prereleases&label=release" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
   <a href="https://claude.ai"><img src="https://img.shields.io/badge/AI%20Powered-Claude%20Code-blueviolet" alt="AI Powered"></a>

@@ -58,9 +58,12 @@ RC numbers auto-increment per version.
 
 | File | Trigger | Purpose |
 |------|---------|---------|
-| `ci.yml` | Pull request | Validate PRs before merge |
-| `continuous-delivery.yml` | Push to `main` | CI gates + auto RC release + multi-arch images |
+| `ci-cd.yml` | PR (CI only) + push to `main` (CI + build + release) | Single pipeline for validation and delivery |
 | `release.yml` | Manual dispatch | Promote RC to stable release |
+
+On pull requests, `ci-cd.yml` runs CI gates and a build check.
+On push to `main`, it runs the same CI gates, then builds multi-arch images,
+publishes an RC release, and commits updated release info back to `RELEASES.md` and `README.md`.
 
 ## Docker Images
 
@@ -138,6 +141,17 @@ git push origin main
 
 Pushes that only change docs (`*.md`, `docs/**`, `LICENSE`, `.gitignore`)
 do not trigger the CD pipeline.
+
+## Auto-Updated Files
+
+The pipeline automatically commits updates to these files after each release:
+
+| File | What gets updated |
+|------|------------------|
+| `RELEASES.md` | Full release history table, latest version links, install commands |
+| `README.md` | Docker pull version in the install section |
+
+These commits use `[skip ci]` to avoid retriggering the pipeline.
 
 ## Release Notes
 
