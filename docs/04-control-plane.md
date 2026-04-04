@@ -1,6 +1,7 @@
 # Control Plane
 
 REST API at `:8100` for running stress operations. UI at `:3100`.
+All operations target the local PostgreSQL container.
 
 ## Endpoints
 

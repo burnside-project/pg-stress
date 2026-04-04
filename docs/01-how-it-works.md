@@ -52,20 +52,26 @@ YOUR DATABASE
 
 ## Two Ways to Use It
 
-**BYOD (primary):** Dump production → restore → pg-stress auto-discovers everything.
+> pg-stress always runs its own PostgreSQL container. It does **not** connect
+> to a remote database. To test production data, export a dump and import it.
+
+**Path A — BYOD (primary):** Export a dump from production, import it into the
+local container, then pg-stress auto-discovers everything.
 
 ```bash
-# .env
-PG_DATABASE=my_production_db
-SEED_SCHEMA=false
-```
+# 1. On your production server:
+pg_dump -Fc -h prod-host -U prod_user -d my_production_db > production.dump
 
-```bash
-make import DUMP=/tmp/production.dump
+# 2. In pg-stress — configure .env:
+PG_DATABASE=my_production_db    # match the DB name in your dump
+SEED_SCHEMA=false               # skip built-in schema
+
+# 3. Import and start:
+make import DUMP=production.dump
 make up INTENSITY=medium
 ```
 
-**Seed (demo):** Use the built-in e-commerce schema to test pg-stress itself.
+**Path B — Seed (demo):** Use the built-in e-commerce schema to test pg-stress itself.
 
 ```bash
 make up    # SEED_SCHEMA=true by default, seeds 30M rows on first run

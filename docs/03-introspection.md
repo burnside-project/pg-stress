@@ -65,9 +65,12 @@ These chains drive:
 
 ## CLI Usage
 
+You can run introspection standalone against the local container:
+
 ```bash
-# Dump introspection profile to stdout
-PG_CONN=postgresql://user:pass@host/db python load-generator-orm/introspect.py
+# Dump introspection profile to stdout (connects to the local container)
+PG_CONN=postgresql://postgres:postgres@localhost:5434/my_production_db \
+  python load-generator-orm/introspect.py
 
 # Save to file
 python load-generator-orm/introspect.py --output profile.json

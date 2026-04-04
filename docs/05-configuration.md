@@ -4,19 +4,29 @@ All settings via environment variables in `.env`. Copy `.env.example` to `.env`.
 
 ## Database Target
 
+These variables configure the **local PostgreSQL container** that pg-stress runs.
+They do not connect to a remote or external database. To test production data,
+export a dump and import it with `make import DUMP=...`
+(see [Quickstart — Path A](02-quickstart.md#path-a-i-have-production-data)).
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PG_USER` | `postgres` | PostgreSQL user (all services read this) |
-| `PG_PASSWORD` | `postgres` | PostgreSQL password |
-| `PG_DATABASE` | `testdb` | Database name — change this to test any database |
-| `PG_PORT` | `5434` | Host-mapped port |
+| `PG_USER` | `postgres` | Container Postgres user |
+| `PG_PASSWORD` | `postgres` | Container Postgres password |
+| `PG_DATABASE` | `testdb` | Database name — set to your dump's DB name for BYOD |
+| `PG_PORT` | `5434` | Host-mapped port (access from your machine via `localhost:5434`) |
 
-Example — test a database called `soak_test`:
+Example — import and test a production dump called `soak_test`:
 
 ```bash
 # .env
-PG_DATABASE=soak_test
-SEED_SCHEMA=false          # skip built-in e-commerce schema
+PG_DATABASE=soak_test      # must match the DB name in the dump
+SEED_SCHEMA=false           # skip built-in e-commerce schema
+```
+
+```bash
+make import DUMP=soak_test.dump
+make up INTENSITY=medium
 ```
 
 ## Schema Seeding
@@ -29,7 +39,6 @@ When `SEED_SCHEMA=true` (default), the built-in e-commerce schema (~30M rows) is
 on first startup. Set to `false` when:
 
 - Using BYOD (`make import DUMP=...`) — your dump already has its own schema
-- Connecting to a database that already has tables
 - You only want an empty database to populate yourself
 
 ## Intensity

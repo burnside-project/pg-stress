@@ -23,7 +23,25 @@ done
 
 See [Releases & CI/CD](06-releases.md) for version pinning and stable releases.
 
+> **Important:** pg-stress runs its own PostgreSQL container. It does **not**
+> connect to a remote or external database. To test production data, you export
+> a dump from production and import it into the local container.
+
 ## Path A: I Have Production Data
+
+### 1. Export a dump from your production database
+
+Run this against your **production** PostgreSQL (not inside pg-stress):
+
+```bash
+# Custom format (-Fc) is recommended — supports parallel restore
+pg_dump -Fc -h prod-host -U prod_user -d my_production_db > production.dump
+
+# Plain SQL also works
+pg_dump -h prod-host -U prod_user -d my_production_db > production.sql
+```
+
+### 2. Clone and configure
 
 ```bash
 git clone https://github.com/dataalgebra-engineering/pg-stress.git
@@ -31,22 +49,34 @@ cd pg-stress
 cp .env.example .env
 ```
 
-Edit `.env` to point at your database:
+Edit `.env`:
 
 ```bash
 # .env
-PG_DATABASE=my_production_db
-SEED_SCHEMA=false              # skip built-in e-commerce schema
+PG_DATABASE=my_production_db       # must match the DB name in your dump
+SEED_SCHEMA=false                  # skip built-in e-commerce schema
 ```
 
-Then import and start:
+The `PG_USER`, `PG_PASSWORD`, and `PG_DATABASE` variables configure the **local
+Docker container** — they are not connection details for your production server.
+
+### 3. Import and start
 
 ```bash
-make import DUMP=/path/to/production.dump
-make up INTENSITY=medium
+make import DUMP=production.dump   # restores into the local container
+make up INTENSITY=medium           # introspects schema, starts load generators
 ```
 
-Open `http://localhost:3100` — pg-stress auto-discovers your schema and starts generating load.
+### 4. Verify
+
+Open `http://localhost:3100` — pg-stress auto-discovers your imported schema
+and starts generating load automatically.
+
+```bash
+# Check that your tables were imported
+docker compose exec postgres psql -U postgres -d my_production_db \
+  -c "SELECT tablename FROM pg_tables WHERE schemaname='public';"
+```
 
 ## Path B: No Production Data
 

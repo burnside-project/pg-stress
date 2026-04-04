@@ -81,7 +81,18 @@ See [Releases](https://github.com/dataalgebra-engineering/pg-stress/releases) fo
 
 ## Quickstart
 
-### I have production data:
+### Path A: I have production data
+
+> pg-stress runs its own PostgreSQL container — it does **not** connect to your
+> live production database. Instead, you export a dump and import it locally.
+
+**Step 1 — Export a dump from production** (run against your production DB):
+
+```bash
+pg_dump -Fc -h prod-host -U prod_user my_production_db > production.dump
+```
+
+**Step 2 — Clone and configure:**
 
 ```console
 $ git clone https://github.com/dataalgebra-engineering/pg-stress.git
@@ -91,16 +102,21 @@ $ cd pg-stress && cp .env.example .env
 Edit `.env`:
 
 ```bash
-PG_DATABASE=my_production_db
-SEED_SCHEMA=false                # skip built-in e-commerce schema
+PG_DATABASE=my_production_db       # must match the DB name in your dump
+SEED_SCHEMA=false                  # skip built-in e-commerce schema
 ```
 
+**Step 3 — Import and start:**
+
 ```console
-$ make import DUMP=/path/to/production.dump
+$ make import DUMP=production.dump
 $ make up INTENSITY=medium
 ```
 
-### I don't have production data:
+pg-stress restores your dump into the local container, introspects your schema,
+and starts generating load automatically.
+
+### Path B: I don't have production data
 
 ```console
 $ git clone https://github.com/dataalgebra-engineering/pg-stress.git
@@ -129,11 +145,13 @@ No configuration. No model definitions. Works with 5 tables or 500.
 
 ### 1. Database Target (`.env`)
 
+These configure the **local Docker container**, not a remote server:
+
 ```bash
-PG_USER=myuser
-PG_PASSWORD=mypass
-PG_DATABASE=mydb
-SEED_SCHEMA=false              # skip built-in schema when using your own data
+PG_USER=postgres               # container Postgres user (default: postgres)
+PG_PASSWORD=postgres           # container Postgres password (default: postgres)
+PG_DATABASE=mydb               # database name — match your dump for Path A
+SEED_SCHEMA=false              # false when using your own imported dump
 ```
 
 ### 2. Intensity (CLI or UI)
