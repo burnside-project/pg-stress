@@ -68,6 +68,7 @@ class PGPoller:
             for r in rows:
                 state = r["state"] or "unknown"
                 cnt = r["cnt"]
+                sample.total_connections += cnt
                 if state == "active":
                     sample.active_connections = cnt
                 elif state == "idle":

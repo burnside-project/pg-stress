@@ -157,8 +157,8 @@ function updateCards(status) {
     const s = status.latest_sample;
     if (!s) return;
 
-    document.getElementById('card-conns').textContent = s.active_connections;
-    document.getElementById('card-conns-sub').textContent = `idle: ${s.idle_connections} | idle-txn: ${s.idle_in_transaction}`;
+    document.getElementById('card-conns').textContent = s.total_connections;
+    document.getElementById('card-conns-sub').textContent = `active: ${s.active_connections} | idle: ${s.idle_connections} | idle-txn: ${s.idle_in_transaction}`;
 
     document.getElementById('card-txn').textContent = fmt(s.txn_per_sec);
     const totalOps = s.tup_inserted_per_sec + s.tup_updated_per_sec + s.tup_deleted_per_sec;

@@ -32,6 +32,7 @@ class MetricsSample:
     cache_hit_ratio: float = 0.0
 
     # pg_stat_activity.
+    total_connections: int = 0
     active_connections: int = 0
     idle_connections: int = 0
     idle_in_transaction: int = 0
@@ -58,6 +59,7 @@ class MetricsSample:
             "blks_read_per_sec": round(self.blks_read_per_sec, 1),
             "blks_hit_per_sec": round(self.blks_hit_per_sec, 1),
             "cache_hit_ratio": round(self.cache_hit_ratio, 4),
+            "total_connections": self.total_connections,
             "active_connections": self.active_connections,
             "idle_connections": self.idle_connections,
             "idle_in_transaction": self.idle_in_transaction,
