@@ -173,7 +173,7 @@ services:
     volumes:
       - ./scenarios/${SCENARIO:-default}.yaml:/etc/stress/scenario.yaml:ro
     ports:
-      - "${DASHBOARD_PORT:-8000}:8000"
+      - "${DASHBOARD_PORT:-8200}:8000"
     networks:
       - stress-net
     restart: unless-stopped

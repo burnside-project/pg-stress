@@ -25,7 +25,7 @@ include $(wildcard $(INTENSITY_ENV))
 up: ## Start core stack (postgres + load-generator + dashboard)
 	SCENARIO=$(SCENARIO) $(COMPOSE) up --build -d
 	@echo ""
-	@echo "  Dashboard:      http://localhost:8000"
+	@echo "  Dashboard:      http://localhost:8200"
 	@echo "  Control Panel:  http://localhost:3100"
 	@echo "  Control Plane:  http://localhost:8100"
 	@echo "  Postgres:       localhost:5434"
@@ -74,7 +74,7 @@ logs-loadgen: ## Follow raw-SQL load generator logs
 up-orm: ## Start core + ORM load generator (raw SQL + SQLAlchemy side by side)
 	SCENARIO=$(SCENARIO) $(COMPOSE) --profile orm up --build -d
 	@echo ""
-	@echo "  Dashboard:  http://localhost:8000"
+	@echo "  Dashboard:  http://localhost:8200"
 	@echo "  Raw SQL:    http://localhost:9090/healthz"
 	@echo "  ORM:        http://localhost:9091/healthz"
 	@echo "  Postgres:   localhost:5434"
@@ -94,7 +94,7 @@ logs-orm: ## Follow ORM load generator logs
 up-bench: ## Start core + pgbench runner
 	SCENARIO=$(SCENARIO) $(COMPOSE) --profile pgbench up --build -d
 	@echo ""
-	@echo "  Dashboard:  http://localhost:8000"
+	@echo "  Dashboard:  http://localhost:8200"
 	@echo "  Postgres:   localhost:5434"
 	@echo "  pgbench:    running (check logs with: make logs-bench)"
 
@@ -118,7 +118,7 @@ bench-remote: ## Run pgbench benchmark on remote server
 up-collector: ## Start core + pg-collector + truth-service
 	SCENARIO=$(SCENARIO) $(COMPOSE) --profile collector up --build -d
 	@echo ""
-	@echo "  Dashboard:      http://localhost:8000"
+	@echo "  Dashboard:      http://localhost:8200"
 	@echo "  Truth Service:  http://localhost:8001"
 	@echo "  Collector:      http://localhost:8080"
 	@echo "  Postgres:       localhost:5434"
@@ -151,7 +151,7 @@ up-control: ## Start core + control plane (portal-driven scenarios)
 	@echo ""
 	@echo "  Control Plane:  http://localhost:8100"
 	@echo "  API Docs:       http://localhost:8100/docs"
-	@echo "  Dashboard:      http://localhost:8000"
+	@echo "  Dashboard:      http://localhost:8200"
 
 .PHONY: logs-control
 logs-control: ## Follow control plane logs
@@ -194,7 +194,7 @@ analyze-collect: ## Collect diagnostic data only (no AI, no API key needed)
 up-full: ## Start everything: core + ORM + pgbench + collector + truth
 	SCENARIO=$(SCENARIO) $(COMPOSE) --profile full up --build -d
 	@echo ""
-	@echo "  Dashboard:      http://localhost:8000"
+	@echo "  Dashboard:      http://localhost:8200"
 	@echo "  Raw SQL:        http://localhost:9090/healthz"
 	@echo "  ORM:            http://localhost:9091/healthz"
 	@echo "  Truth Service:  http://localhost:8001"
@@ -266,7 +266,7 @@ healthz: ## Check health of all services
 	@curl -s http://localhost:9091/healthz | python3 -m json.tool 2>/dev/null || echo "  NOT RUNNING"
 	@echo ""
 	@echo "Dashboard:"
-	@curl -so /dev/null -w "  HTTP %{http_code}\n" http://localhost:8000/ 2>/dev/null || echo "  NOT RUNNING"
+	@curl -so /dev/null -w "  HTTP %{http_code}\n" http://localhost:8200/ 2>/dev/null || echo "  NOT RUNNING"
 	@echo ""
 	@echo "Truth Service:"
 	@curl -s http://localhost:8001/health | python3 -m json.tool 2>/dev/null || echo "  NOT RUNNING"

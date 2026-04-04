@@ -1,13 +1,28 @@
 # Control Plane
 
-REST API at `:8100` for running stress operations. UI at `:3100`.
-All operations target the local PostgreSQL container.
+REST API at `:8100` for running stress operations and monitoring. UI at `:3100`.
+All operations target the local PostgreSQL container. Swagger docs at `:8100/docs`.
 
-## Endpoints
+## Monitoring Endpoints
+
+Use these to see what the stress test is doing:
+
+```bash
+# Full stack status — services, DB size, connections, per-table row counts + dead tuples
+curl -s http://<host>:8100/status | python3 -m json.tool
+
+# Database target + current intensity level
+curl -s http://<host>:8100/config | python3 -m json.tool
+
+# ORM generator — per-pattern operation counts + errors
+curl -s http://<host>:9091/healthz | python3 -m json.tool
+```
+
+## All Endpoints
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/status` | GET | Stack status: services, DB size, tables, jobs |
+| `/status` | GET | Stack status: services, DB size, connections, per-table stats |
 | `/config` | GET | Database target + current intensity |
 | `/config/intensity` | POST | Switch Low/Medium/High (restarts generators) |
 | `/generators/{name}/start` | POST | Start ORM or pgbench generator |

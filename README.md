@@ -49,13 +49,17 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
 
 ---
 
-> ### Control Panel — configure intensity, inject rows, run growth ladders, trigger AI analysis
+> ### Control Panel (`:3100`) — configure intensity, inject rows, run growth ladders, trigger AI analysis
 > ![Control Panel](assets/control-panel-full.png)
+>
+> Live: `http://<host>:3100`
 
 ---
 
-> ### Metrics Dashboard — real-time TPS, cache ratio, connections, table sizes
+> ### Metrics Dashboard (`:8200`) — real-time TPS, cache ratio, connections, table sizes
 > ![Dashboard](assets/dashboard.png)
+>
+> Live: `http://<host>:8200`
 
 ---
 
@@ -141,6 +145,102 @@ pg-stress connects to PostgreSQL and introspects the schema automatically:
 
 No configuration. No model definitions. Works with 5 tables or 500.
 
+## Monitoring the Stress Test
+
+Once the stack is running, there are several ways to see what's happening.
+
+### Control Panel UI (`:3100`)
+
+The primary interface. Shows database target, current intensity, service status,
+connections, table counts, and active jobs. From here you can:
+
+- Switch intensity (Low / Medium / High)
+- Import a production dump (BYOD)
+- Inject rows into any table
+- Run bulk updates
+- Launch connection pressure tests
+- Start growth ladders
+- Trigger AI analysis
+
+### Metrics Dashboard (`:8200`)
+
+Real-time auto-refreshing charts:
+
+- **TPS** — transactions per second over time
+- **Cache hit ratio** — shared buffer effectiveness
+- **Active connections** — current vs max
+- **Table sizes** — growth over time
+- **Dead tuples** — autovacuum pressure
+
+### ORM Generator Health (`:9091/healthz`)
+
+Shows per-pattern operation counts in real time:
+
+```json
+{
+  "status": "running",
+  "uptime_s": 725,
+  "ops": {
+    "n_plus_1": 9739,
+    "eager_join": 9833,
+    "eager_subquery": 6429,
+    "eager_selectin": 6473,
+    "bulk_insert": 3243,
+    "orm_update": 6389,
+    "pagination": 6444,
+    "aggregation": 6701,
+    "exists_filter": 6580,
+    "relationship": 3227,
+    "errors": 0
+  }
+}
+```
+
+### Control Plane API (`:8100`)
+
+REST API with Swagger docs at `/docs`. Key endpoints for monitoring:
+
+```bash
+# Stack status — services, DB size, connections, table row counts
+curl http://<host>:8100/status
+
+# Current config — database target + intensity level
+curl http://<host>:8100/config
+
+# Background job status
+curl http://<host>:8100/jobs
+```
+
+### PostgreSQL Direct Queries
+
+Connect to the database and inspect what the stress test is doing:
+
+```bash
+# Top queries by total execution time
+make pg-stat
+
+# Database and table sizes
+make db-size
+
+# Or connect directly
+docker compose exec postgres psql -U postgres -d <your_db>
+```
+
+Example — top queries during a stress test against `soak_test`:
+
+```
+ calls | total_ms | mean_ms | query
+-------+----------+---------+----------------------------------------------------
+  6792 |  2225923 |  327.73 | SELECT p.id, p.name, similarity(p.name, $1) AS ...
+   471 |  1308156 | 2777.40 | SELECT orders.id, orders.customer_id, orders.... (N+1)
+   532 |   484258 |  910.26 | SELECT date_trunc($1, placed_at) AS hour, count(*)...
+   454 |   172025 |  378.91 | SELECT public.order_items.id, ... (eager join)
+   557 |   146450 |  262.93 | SELECT p.id, count(oi.id) AS units_sold, sum(...)
+```
+
+This tells you exactly which queries are consuming the most time — the same
+queries Claude analyzes when you run `make analyze`.
+
 ## Three Knobs
 
 ### 1. Database Target (`.env`)
@@ -216,7 +316,7 @@ Each pattern is a generic template applied to **your** FK chains — not hardcod
 | PostgreSQL 15 | 5434 | Database under test |
 | Raw SQL Generator (Go) | 9090 | 25+ hand-written OLTP operations, 6 chaos patterns |
 | ORM Generator (Python) | 9091 | 10 auto-discovered ORM patterns via schema introspection |
-| Dashboard | 8000 | Real-time charts: TPS, cache ratio, connections, table sizes |
+| Dashboard | 8200 | Real-time charts: TPS, cache ratio, connections, table sizes |
 | Control Plane API | 8100 | REST API for WHAT IF scenarios, generator control, AI analysis |
 | Control Panel UI | 3100 | Browser-based dashboard with intensity controls |
 

@@ -88,7 +88,7 @@ Or set individual variables (overrides preset):
 | Variable | Default | Service |
 |----------|---------|---------|
 | `PG_PORT` | `5434` | PostgreSQL |
-| `DASHBOARD_PORT` | `8000` | Dashboard |
+| `DASHBOARD_PORT` | `8200` | Dashboard |
 | `CONTROL_PLANE_PORT` | `8100` | Control Plane API |
 | `UI_PORT` | `3100` | Control Panel UI |
 | `ORM_HEALTHZ_PORT` | `9091` | ORM Generator |
