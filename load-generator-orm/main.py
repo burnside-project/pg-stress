@@ -82,6 +82,9 @@ class Stats:
 
 stats = Stats()
 
+# Populated after introspection — exposed via /schema endpoint.
+_schema_info: dict = {}
+
 
 # ── Shutdown ─────────────────────────────────────────────────────────────
 
@@ -105,6 +108,12 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps(stats.snapshot()).encode())
+        elif self.path == "/schema":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(_schema_info).encode())
         else:
             self.send_response(404)
             self.end_headers()
@@ -572,6 +581,67 @@ def main():
     log.info("Classification: entity=%s transactional=%s append_only=%s lookup=%s hierarchical=%s",
              profile.entity_tables, profile.transactional_tables,
              profile.append_only_tables, profile.lookup_tables, profile.hierarchical_tables)
+
+    # Build schema info for /schema endpoint.
+    global _schema_info
+    orm_classes = {}
+    for tname in sorted(models.table_names):
+        cls = models.get_model(tname)
+        if cls is None:
+            continue
+        cols = [c.name for c in cls.__table__.columns]
+        rels = []
+        try:
+            for rname, rel in cls.__mapper__.relationships.items():
+                rels.append({"name": rname, "target": rel.mapper.class_.__name__, "direction": str(rel.direction.name)})
+        except Exception:
+            pass
+        orm_classes[tname] = {"columns": cols, "relationships": rels}
+
+    _schema_info = {
+        "database": profile.database,
+        "total_tables": profile.total_tables,
+        "total_rows": profile.total_rows,
+        "total_size": profile.total_size_pretty,
+        "classification": {
+            "entity": profile.entity_tables,
+            "transactional": profile.transactional_tables,
+            "append_only": profile.append_only_tables,
+            "lookup": profile.lookup_tables,
+            "hierarchical": profile.hierarchical_tables,
+        },
+        "relationships": [
+            {"parent": r.parent_table, "child": r.child_table, "via": r.fk_column}
+            for r in profile.relationships
+        ],
+        "fk_chains": [
+            {"tables": c.tables, "depth": c.depth}
+            for c in profile.fk_chains
+        ],
+        "tables": {
+            tname: {
+                "role": t.role,
+                "row_count": t.row_count,
+                "size": t.size_pretty,
+                "pk": t.pk_columns,
+                "columns": [c.name for c in t.columns],
+                "foreign_keys": [{"column": fk.column, "target": f"{fk.target_table}.{fk.target_column}"} for fk in t.foreign_keys],
+                "indexes": [{"name": i.name, "columns": i.columns, "unique": i.unique, "type": i.type} for i in t.indexes],
+                "timestamp_columns": t.timestamp_columns,
+                "numeric_columns": t.numeric_columns,
+                "status_columns": t.status_columns,
+            }
+            for tname, t in profile.tables.items()
+        },
+        "orm_classes": orm_classes,
+        "operations": {
+            "queryable": ctx.queryable,
+            "insertable": ctx.insertable,
+            "updatable": ctx.updatable,
+            "paginable": ctx.paginable,
+        },
+        "mix_weights": MIX,
+    }
 
     # Start healthz.
     healthz = threading.Thread(target=lambda: HTTPServer(("", 9091), HealthHandler).serve_forever(), daemon=True)

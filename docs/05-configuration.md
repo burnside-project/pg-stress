@@ -11,6 +11,7 @@ export a dump and import it with `make import DUMP=...`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `PG_HOST` | `localhost` | Server hostname or IP — displayed in the Control Panel UI |
 | `PG_USER` | `postgres` | Container Postgres user |
 | `PG_PASSWORD` | `postgres` | Container Postgres password |
 | `PG_DATABASE` | `testdb` | Database name — set to your dump's DB name for BYOD |

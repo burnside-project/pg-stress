@@ -52,6 +52,7 @@ app.add_middleware(
 
 PG_HOST = os.environ.get("PG_HOST", "postgres")
 PG_PORT = int(os.environ.get("PG_PORT", "5432"))
+PG_EXTERNAL_PORT = int(os.environ.get("PG_EXTERNAL_PORT", os.environ.get("PG_PORT", "5434")))
 PG_USER = os.environ.get("PG_USER", "postgres")
 PG_PASSWORD = os.environ.get("PG_PASSWORD", "postgres")
 PG_DATABASE = os.environ.get("PG_DATABASE", "testdb")
@@ -760,10 +761,13 @@ def get_config():
     elif int(max_conns) >= 80:
         current = "high"
 
+    import socket
+    display_host = os.environ.get("PG_DISPLAY_HOST", socket.gethostname())
+
     return {
         "database": {
-            "host": PG_HOST,
-            "port": PG_PORT,
+            "host": display_host,
+            "port": PG_EXTERNAL_PORT,
             "user": PG_USER,
             "database": PG_DATABASE,
         },

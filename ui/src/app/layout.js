@@ -1,12 +1,12 @@
 export const metadata = {
-  title: "pg-stress",
+  title: "Burnside Project — pg-stress",
   description: "PostgreSQL stress test control plane",
 }
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", background: "#0a0a0a", color: "#e0e0e0" }}>
+      <body style={{ margin: 0, fontFamily: "system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", background: "#f8fafc", color: "#1e293b" }}>
         {children}
       </body>
     </html>

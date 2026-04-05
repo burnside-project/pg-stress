@@ -9,17 +9,17 @@ const chartDefaults = {
     responsive: true,
     maintainAspectRatio: true,
     animation: false,
-    plugins: { legend: { labels: { color: '#8b8fa3', font: { size: 11 } } } },
+    plugins: { legend: { labels: { color: '#64748b', font: { size: 11 } } } },
     scales: {
         x: {
             type: 'time',
             time: { tooltipFormat: 'HH:mm:ss' },
-            ticks: { color: '#8b8fa3', font: { size: 10 }, maxTicksLimit: 8 },
-            grid: { color: '#2a2d3a' },
+            ticks: { color: '#94a3b8', font: { size: 10 }, maxTicksLimit: 8 },
+            grid: { color: '#f1f5f9' },
         },
         y: {
-            ticks: { color: '#8b8fa3', font: { size: 10 } },
-            grid: { color: '#2a2d3a' },
+            ticks: { color: '#94a3b8', font: { size: 10 } },
+            grid: { color: '#f1f5f9' },
             beginAtZero: true,
         },
     },
@@ -274,6 +274,14 @@ function updateLoadgenPanel(loadgen) {
     `<div class="card"><div class="label">bursts</div><div class="value">${fmt(loadgen.bursts)}</div></div>` +
     `<div class="card"><div class="label">uptime</div><div class="value">${fmtDuration(loadgen.uptime_s)}</div></div>`;
 }
+
+// ─── Reset button ───────────────────────────────────────────────────
+
+document.getElementById('reset-btn').addEventListener('click', async () => {
+    if (!confirm('Clear all collected samples and start fresh?')) return;
+    await fetch('/api/reset', { method: 'POST' });
+    refresh();
+});
 
 // ─── Auto-refresh ────────────────────────────────────────────────────
 

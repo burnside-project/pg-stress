@@ -159,6 +159,16 @@ async def api_tables():
     }
 
 
+@app.post("/api/reset")
+async def api_reset():
+    """Clear all collected samples and reset the start time."""
+    global start_time
+    store.samples.clear()
+    start_time = datetime.now(timezone.utc)
+    log.info("metrics reset — all samples cleared")
+    return {"status": "ok", "message": "All samples cleared"}
+
+
 @app.get("/api/config")
 async def api_config():
     return {

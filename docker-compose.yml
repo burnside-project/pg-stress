@@ -285,7 +285,9 @@ services:
         condition: service_healthy
     environment:
       PG_HOST: postgres
+      PG_DISPLAY_HOST: "${PG_HOST:-localhost}"
       PG_PORT: "5432"
+      PG_EXTERNAL_PORT: "${PG_PORT:-5434}"
       PG_USER: ${PG_USER:-postgres}
       PG_PASSWORD: ${PG_PASSWORD:-postgres}
       PG_DATABASE: ${PG_DATABASE:-testdb}
