@@ -130,6 +130,8 @@ export default function Home() {
   const [report, setReport] = useState(null)
   const [reportsList, setReportsList] = useState([])
   const [activeNav, setActiveNav] = useState("target")
+  const [flushConfirm, setFlushConfirm] = useState("")
+  const [flushResult, setFlushResult] = useState(null)
 
   const [f, setF] = useState({
     injectTable: "orders", injectRows: 1000000,
@@ -608,26 +610,42 @@ export default function Home() {
               </div>
             </div>
 
-            <div id="section-jobs" style={s.card("#10b981")}>
+            <div id="section-jobs" style={{ ...s.card("#10b981"), gridColumn: "1 / -1" }}>
               <div style={s.cardTitle}>Background Jobs</div>
-              <div style={s.cardDesc}>Long-running operations report status here.</div>
+              <div style={s.cardDesc}>Live progress for inject, bulk update, ladder, and analysis operations.</div>
               {jobs.length === 0 ? (
                 <p style={{ fontSize: 12, color: "#94a3b8" }}>No jobs yet. Run an operation above.</p>
               ) : (
-                <div style={{ maxHeight: 200, overflow: "auto" }}>
-                  <table style={s.table}>
-                    <thead><tr><th style={s.th}>ID</th><th style={s.th}>Type</th><th style={s.th}>Status</th><th style={s.th}>Time</th></tr></thead>
-                    <tbody>
-                      {[...jobs].reverse().slice(0, 15).map(j => (
-                        <tr key={j.id}>
-                          <td style={{ ...s.td, fontFamily: "monospace", fontSize: 11 }}>{j.id}</td>
-                          <td style={s.td}>{j.type}</td>
-                          <td style={s.td}><Badge status={j.status} /></td>
-                          <td style={{ ...s.td, fontSize: 10, color: "#94a3b8" }}>{j.started_at?.split("T")[1]?.split(".")[0]}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[...jobs].reverse().slice(0, 10).map(j => (
+                    <div key={j.id} style={{
+                      background: j.status === "running" ? "#f0fdf4" : j.status === "failed" ? "#fef2f2" : "#f8fafc",
+                      border: `1px solid ${j.status === "running" ? "#bbf7d0" : j.status === "failed" ? "#fecaca" : "#e2e8f0"}`,
+                      borderRadius: 6, padding: 12,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <Badge status={j.status} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{j.type}</span>
+                        <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace" }}>{j.id}</span>
+                        <div style={{ flex: 1 }} />
+                        <span style={{ fontSize: 11, color: "#64748b" }}>{j.elapsed_s}s elapsed</span>
+                      </div>
+                      {/* Progress bar */}
+                      {j.status === "running" && (
+                        <div style={{ background: "#e2e8f0", borderRadius: 3, height: 6, marginBottom: 6 }}>
+                          <div style={{ background: "#16a34a", borderRadius: 3, height: 6, width: `${j.progress || 0}%`, transition: "width 0.5s" }} />
+                        </div>
+                      )}
+                      <div style={{ fontSize: 11, color: "#64748b" }}>{j.progress_msg || ""}</div>
+                      {/* Before / After */}
+                      {(j.before || j.after) && (
+                        <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 11 }}>
+                          {j.before && <div><span style={{ color: "#94a3b8" }}>Before:</span> <span style={{ color: "#1e293b", fontWeight: 500 }}>{typeof j.before.rows === "number" ? j.before.rows.toLocaleString() : JSON.stringify(j.before)} rows</span> {j.before.size && <span style={{ color: "#94a3b8" }}>({j.before.size})</span>}</div>}
+                          {j.after && <div><span style={{ color: "#94a3b8" }}>After:</span> <span style={{ color: "#1e293b", fontWeight: 500 }}>{typeof j.after.rows === "number" ? j.after.rows.toLocaleString() : JSON.stringify(j.after)} rows</span> {j.after.size && <span style={{ color: "#94a3b8" }}>({j.after.size})</span>}</div>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -709,6 +727,58 @@ export default function Home() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* ═══ SECTION: Data Management ═════════════════════════════ */}
+        <div style={s.section}>
+          <div style={s.sectionHead}>
+            <span style={s.sectionTitle}>Data Management</span>
+            <span style={s.sectionSub}>— Flush metrics, reports, and job history</span>
+          </div>
+          <div style={s.grid}>
+            <div style={s.card("#dc2626")}>
+              <div style={s.cardTitle}>Flush Data</div>
+              <div style={s.cardDesc}>Permanently delete all collected metrics, reports, and job history. This cannot be undone.</div>
+              <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: 12, marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#dc2626", marginBottom: 6 }}>I understand the implications</div>
+                <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>This will permanently delete all dashboard metrics (SQLite), saved AI analysis reports, ladder results, and job history.</div>
+                <label style={s.label}>Type <strong>DELETE ALL DATA</strong> to confirm</label>
+                <input style={{ ...s.input, borderColor: flushConfirm === "DELETE ALL DATA" ? "#16a34a" : "#e2e8f0" }}
+                  value={flushConfirm} onChange={e => setFlushConfirm(e.target.value)}
+                  placeholder="DELETE ALL DATA" />
+              </div>
+              <button style={{ ...s.btn, width: "100%", background: flushConfirm === "DELETE ALL DATA" ? "#dc2626" : "#e2e8f0", color: flushConfirm === "DELETE ALL DATA" ? "#fff" : "#94a3b8", cursor: flushConfirm === "DELETE ALL DATA" ? "pointer" : "not-allowed" }}
+                disabled={flushConfirm !== "DELETE ALL DATA" || loading.flush}
+                onClick={async () => {
+                  const r = await act("flush", () => post("/flush", { confirmation: flushConfirm, target: "all" }))
+                  setFlushResult(r)
+                  setFlushConfirm("")
+                  setReportsList([])
+                }}>
+                {loading.flush ? "Flushing..." : "Flush All Data"}
+              </button>
+              {flushResult && (
+                <div style={{ marginTop: 8, fontSize: 11, color: "#16a34a", background: "#f0fdf4", padding: 8, borderRadius: 4 }}>
+                  Flushed: {JSON.stringify(flushResult.result || flushResult)}
+                </div>
+              )}
+            </div>
+
+            <div style={s.card("#64748b")}>
+              <div style={s.cardTitle}>Storage Info</div>
+              <div style={s.cardDesc}>Where pg-stress stores data.</div>
+              <table style={s.table}>
+                <tbody>
+                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500, width: 120 }}>Metrics</td><td style={s.td}>SQLite — <code style={{ fontSize: 10, background: "#f1f5f9", padding: "1px 4px", borderRadius: 2 }}>dashboard-data:/data/metrics.db</code></td></tr>
+                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>Reports</td><td style={s.td}>JSON + MD — <code style={{ fontSize: 10, background: "#f1f5f9", padding: "1px 4px", borderRadius: 2 }}>control-plane-reports:/app/reports/</code></td></tr>
+                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>PostgreSQL</td><td style={s.td}>PG files — <code style={{ fontSize: 10, background: "#f1f5f9", padding: "1px 4px", borderRadius: 2 }}>stress-pg-data</code></td></tr>
+                </tbody>
+              </table>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>
+                <code style={{ fontSize: 10 }}>make stop</code> preserves data. <code style={{ fontSize: 10 }}>make down</code> removes volumes.
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ═══ Activity Log ══════════════════════════════════════════ */}

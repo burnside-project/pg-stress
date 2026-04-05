@@ -69,7 +69,7 @@ docker_client = docker.from_env()
 jobs: dict[str, dict] = {}
 
 
-def new_job(job_type: str) -> str:
+def new_job(job_type: str, meta: dict = None) -> str:
     job_id = str(uuid.uuid4())[:8]
     jobs[job_id] = {
         "id": job_id,
@@ -77,16 +77,36 @@ def new_job(job_type: str) -> str:
         "status": "running",
         "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": None,
+        "elapsed_s": 0,
+        "progress": 0,
+        "progress_msg": "Starting...",
+        "before": meta.get("before") if meta else None,
+        "after": None,
         "result": None,
         "error": None,
     }
     return job_id
 
 
+def update_job(job_id: str, progress: int = None, msg: str = None):
+    if job_id in jobs:
+        started = datetime.fromisoformat(jobs[job_id]["started_at"])
+        jobs[job_id]["elapsed_s"] = int((datetime.now(timezone.utc) - started).total_seconds())
+        if progress is not None:
+            jobs[job_id]["progress"] = min(progress, 100)
+        if msg:
+            jobs[job_id]["progress_msg"] = msg
+
+
 def complete_job(job_id: str, result: dict = None, error: str = None):
     if job_id in jobs:
+        started = datetime.fromisoformat(jobs[job_id]["started_at"])
         jobs[job_id]["status"] = "failed" if error else "completed"
         jobs[job_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+        jobs[job_id]["elapsed_s"] = int((datetime.now(timezone.utc) - started).total_seconds())
+        jobs[job_id]["progress"] = 100 if not error else jobs[job_id]["progress"]
+        jobs[job_id]["progress_msg"] = f"Failed: {error}" if error else "Completed"
+        jobs[job_id]["after"] = result.get("after") if result else None
         jobs[job_id]["result"] = result
         jobs[job_id]["error"] = error
 
@@ -286,6 +306,13 @@ def stop_generator(name: str):
 
 def _do_inject(job_id: str, req: InjectRequest):
     try:
+        # Snapshot before.
+        before_rows = query("SELECT n_live_tup FROM pg_stat_user_tables WHERE relname = %s", (req.table,))
+        before_count = before_rows[0]["n_live_tup"] if before_rows else 0
+        before_size = query("SELECT pg_size_pretty(pg_total_relation_size(%s::regclass)) AS size", (req.table,))
+        jobs[job_id]["before"] = {"rows": before_count, "size": before_size[0]["size"] if before_size else "?"}
+        update_job(job_id, progress=0, msg=f"Starting inject into {req.table} ({before_count:,} rows)")
+
         batch_size = min(req.rows, 500000)
         remaining = req.rows
         total_inserted = 0
@@ -293,16 +320,14 @@ def _do_inject(job_id: str, req: InjectRequest):
         if req.template:
             template = req.template
         else:
-            # Auto-generate INSERT based on table structure.
             cols = query("""
                 SELECT column_name, data_type, is_nullable
                 FROM information_schema.columns
                 WHERE table_name = %s AND table_schema = 'public'
-                  AND column_default LIKE 'nextval%%'  -- skip serial PKs
+                  AND column_default LIKE 'nextval%%'
                 ORDER BY ordinal_position
             """, (req.table,))
 
-            # Use a generic generate_series INSERT.
             template = f"""
                 INSERT INTO {req.table}
                 SELECT * FROM {req.table}
@@ -316,12 +341,20 @@ def _do_inject(job_id: str, req: InjectRequest):
             execute(sql)
             remaining -= batch
             total_inserted += batch
+            pct = int((total_inserted / req.rows) * 100)
+            update_job(job_id, progress=pct, msg=f"Injected {total_inserted:,} / {req.rows:,} rows into {req.table}")
             log.info("inject %s: %d / %d rows", req.table, total_inserted, req.rows)
 
-        # Run ANALYZE after injection.
+        update_job(job_id, progress=95, msg=f"Running ANALYZE on {req.table}...")
         execute(f"ANALYZE {req.table}")
 
-        complete_job(job_id, {"table": req.table, "rows_inserted": total_inserted})
+        # Snapshot after.
+        after_rows = query("SELECT n_live_tup FROM pg_stat_user_tables WHERE relname = %s", (req.table,))
+        after_count = after_rows[0]["n_live_tup"] if after_rows else 0
+        after_size = query("SELECT pg_size_pretty(pg_total_relation_size(%s::regclass)) AS size", (req.table,))
+        after = {"rows": after_count, "size": after_size[0]["size"] if after_size else "?"}
+
+        complete_job(job_id, {"table": req.table, "rows_inserted": total_inserted, "after": after})
     except Exception as e:
         complete_job(job_id, error=str(e))
 
@@ -338,8 +371,14 @@ def inject_rows(req: InjectRequest, background_tasks: BackgroundTasks):
 
 def _do_bulk_update(job_id: str, req: BulkUpdateRequest):
     try:
+        before_rows = query("SELECT n_live_tup, n_dead_tup FROM pg_stat_user_tables WHERE relname = %s", (req.table,))
+        before = {"rows": before_rows[0]["n_live_tup"] if before_rows else 0, "dead": before_rows[0]["n_dead_tup"] if before_rows else 0}
+        jobs[job_id]["before"] = before
+        update_job(job_id, progress=0, msg=f"Starting bulk update on {req.table}")
+
         where = f"WHERE {req.where_clause}" if req.where_clause else ""
         total_updated = 0
+        batch_num = 0
 
         while True:
             sql = f"""
@@ -351,12 +390,19 @@ def _do_bulk_update(job_id: str, req: BulkUpdateRequest):
             """
             rows = execute(sql)
             total_updated += rows
+            batch_num += 1
+            update_job(job_id, msg=f"Updated {total_updated:,} rows in {req.table} (batch {batch_num})")
             log.info("bulk-update %s: %d rows (total: %d)", req.table, rows, total_updated)
             if rows < req.batch_size:
                 break
 
+        update_job(job_id, progress=95, msg=f"Running ANALYZE on {req.table}...")
         execute(f"ANALYZE {req.table}")
-        complete_job(job_id, {"table": req.table, "rows_updated": total_updated})
+
+        after_rows = query("SELECT n_live_tup, n_dead_tup FROM pg_stat_user_tables WHERE relname = %s", (req.table,))
+        after = {"rows": after_rows[0]["n_live_tup"] if after_rows else 0, "dead": after_rows[0]["n_dead_tup"] if after_rows else 0}
+
+        complete_job(job_id, {"table": req.table, "rows_updated": total_updated, "after": after})
     except Exception as e:
         complete_job(job_id, error=str(e))
 
@@ -618,6 +664,45 @@ def get_latest_analysis():
     if not reports:
         raise HTTPException(404, "No analysis reports found")
     return json.loads(reports[0].read_text())
+
+
+# ── Data management (flush) ──────────────────────────────────────────────
+
+
+class FlushRequest(BaseModel):
+    confirmation: str  # Must be "DELETE ALL DATA"
+    target: str = "all"  # "all", "metrics", "reports", "jobs"
+
+
+@app.post("/flush")
+def flush_data(req: FlushRequest):
+    if req.confirmation != "DELETE ALL DATA":
+        raise HTTPException(400, "Confirmation must be exactly: DELETE ALL DATA")
+
+    result = {}
+
+    if req.target in ("all", "metrics"):
+        # Clear dashboard metrics by calling its reset endpoint.
+        try:
+            import httpx
+            httpx.post("http://dashboard:8000/api/reset", timeout=5)
+            result["metrics"] = "cleared"
+        except Exception:
+            result["metrics"] = "dashboard not reachable"
+
+    if req.target in ("all", "reports"):
+        count = 0
+        for f in REPORTS_DIR.glob("*"):
+            f.unlink()
+            count += 1
+        result["reports"] = f"{count} files deleted"
+
+    if req.target in ("all", "jobs"):
+        jobs.clear()
+        result["jobs"] = "cleared"
+
+    log.warning("FLUSH executed: target=%s result=%s", req.target, result)
+    return {"status": "flushed", "target": req.target, "result": result}
 
 
 # ── Jobs ─────────────────────────────────────────────────────────────────
