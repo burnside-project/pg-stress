@@ -1,0 +1,63 @@
+name: Publish to Public Repo
+
+# Manual trigger only — pushes current main to burnside-project/pg-stress
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "publish" to confirm push to burnside-project/pg-stress'
+        required: true
+        type: string
+      branch:
+        description: 'Branch to publish (default: main)'
+        required: false
+        default: 'main'
+        type: string
+
+jobs:
+  publish:
+    name: Push to burnside-project/pg-stress
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'publish'
+
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0  # Full history for clean push
+
+      - name: Configure git
+        run: |
+          git config user.name "Burnside Project Bot"
+          git config user.email "bot@burnsideproject.ai"
+
+      - name: Push to public repo
+        env:
+          PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          # Add the public repo as a remote
+          git remote add public https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/burnside-project/pg-stress.git
+
+          # Push the branch
+          BRANCH="${{ github.event.inputs.branch }}"
+          echo "Publishing ${BRANCH} to burnside-project/pg-stress..."
+          git push public ${BRANCH} --force
+
+          echo ""
+          echo "✅ Published to https://github.com/burnside-project/pg-stress"
+          echo "   Branch: ${BRANCH}"
+          echo "   Commit: $(git rev-parse --short HEAD)"
+          echo "   Message: $(git log -1 --pretty=%s)"
+
+      - name: Summary
+        run: |
+          echo "## Published to Public Repo" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Source** | dataalgebra-engineering/pg-stress |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target** | burnside-project/pg-stress |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | ${{ github.event.inputs.branch }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`$(git rev-parse --short HEAD)\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Message** | $(git log -1 --pretty=%s) |" >> $GITHUB_STEP_SUMMARY
