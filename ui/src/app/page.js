@@ -1074,8 +1074,7 @@ export default function Home() {
             </div>
           </div>
           <div style={{ fontSize: 10, color: "#94a3b8" }}>
-            &copy; 2025-2026 <a href="https://burnsideproject.ai" target="_blank" style={{ color: "#94a3b8" }}>Burnside Project</a>. Apache License 2.0. Built with Claude Code.
-          </div>
+            &copy; 2025-2026 <a href="https://burnsideproject.ai" target="_blank" style={{ color: "#94a3b8" }}>Burnside Project</a>. Apache License 2.0.           </div>
         </footer>
 
       </main>

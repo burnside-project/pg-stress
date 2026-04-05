@@ -33,6 +33,12 @@
             <div>Cache Ratio<div class="sidebar-tip">Buffer hit effectiveness</div></div>
         </a>
 
+        <div class="sidebar-nav-section">Configuration</div>
+        <a href="#pg-config-panel" class="sidebar-nav-item" title="Live PostgreSQL settings — shared_buffers, work_mem, max_connections, etc.">
+            <div class="sidebar-dot" style="background:#64748b"></div>
+            <div>PG Config<div class="sidebar-tip">Live settings, static until restart</div></div>
+        </a>
+
         <div class="sidebar-nav-section">Data</div>
         <a href="#tables-table" class="sidebar-nav-item" title="Row counts with live deltas, dead tuples, sizes, safety limits">
             <div class="sidebar-dot" style="background:#f59e0b"></div>
@@ -229,6 +235,18 @@
             <div class="cards" id="loadgen-cards"></div>
         </div>
 
+        <!-- PostgreSQL Configuration -->
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #e2e8f0">
+            <span style="font-size:15px; font-weight:700; color:#1e293b">PostgreSQL Configuration</span>
+            <span style="font-size:11px; color:#94a3b8">— Live settings from the running container (static until restart)</span>
+        </div>
+
+        <div class="tables-panel" id="pg-config-panel">
+            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:8px" id="pg-config-grid">
+                <div style="color:#94a3b8; font-size:12px">Loading configuration...</div>
+            </div>
+        </div>
+
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #e2e8f0">
             <span style="font-size:15px; font-weight:700; color:#1e293b">Table Sizes & Safety Limits</span>
             <span style="font-size:11px; color:#94a3b8">— Row counts, dead tuples, growth tracking</span>
@@ -288,12 +306,11 @@
                 </div>
             </div>
             <div style="font-size:10px; color:#94a3b8">
-                &copy; 2025-2026 <a href="https://burnsideproject.ai" target="_blank" style="color:#94a3b8">Burnside Project</a>. Apache License 2.0. Built with Claude Code.
-            </div>
+                &copy; 2025-2026 <a href="https://burnsideproject.ai" target="_blank" style="color:#94a3b8">Burnside Project</a>. Apache License 2.0.             </div>
         </footer>
 
     </div>
 
-    <script src="/static/dashboard.js?v=9"></script>
+    <script src="/static/dashboard.js?v=10"></script>
 </body>
 </html>

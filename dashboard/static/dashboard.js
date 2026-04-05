@@ -388,6 +388,40 @@ async function loadTestRunBadge() {
 loadTestRunBadge();
 setInterval(loadTestRunBadge, 15000);
 
+// ─── PostgreSQL config (loaded once) ─────────────────────────────────
+
+async function loadPgConfig() {
+    try {
+        const res = await fetch('/api/pg-config');
+        const data = await res.json();
+        const grid = document.getElementById('pg-config-grid');
+        if (!grid || !Array.isArray(data)) return;
+
+        // Format values with units for readability.
+        function fmtSetting(name, val, unit) {
+            if (unit === '8kB') return `${Math.round(parseInt(val) * 8 / 1024)} MB`;
+            if (unit === 'kB') return `${Math.round(parseInt(val) / 1024)} MB`;
+            if (unit === 'MB') return `${val} MB`;
+            if (unit === 'ms') return `${val} ms`;
+            if (unit === 's') return `${val}s`;
+            return val;
+        }
+
+        grid.innerHTML = data.map(s => `
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center">
+                <div>
+                    <div style="font-size:12px; font-weight:600; color:#1e293b">${s.name}</div>
+                    <div style="font-size:9px; color:#94a3b8; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${s.desc}">${s.desc}</div>
+                </div>
+                <div style="font-size:14px; font-weight:700; color:#2563eb; font-family:'SF Mono',Menlo,monospace; white-space:nowrap">
+                    ${fmtSetting(s.name, s.value, s.unit)}
+                </div>
+            </div>
+        `).join('');
+    } catch {}
+}
+loadPgConfig();
+
 // ─── Cross-portal link ──────────────────────────────────────────────
 
 const cpLink = document.getElementById('link-control-panel');

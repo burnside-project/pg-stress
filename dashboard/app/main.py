@@ -330,6 +330,31 @@ async def api_config():
     }
 
 
+@app.get("/api/pg-config")
+async def api_pg_config():
+    """Live PostgreSQL configuration — loaded once, doesn't change unless container restarts."""
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT name, setting, unit, short_desc
+                FROM pg_settings
+                WHERE name IN (
+                    'shared_buffers', 'work_mem', 'effective_cache_size',
+                    'max_connections', 'maintenance_work_mem', 'wal_buffers',
+                    'max_wal_size', 'random_page_cost', 'effective_io_concurrency',
+                    'checkpoint_completion_target', 'autovacuum_max_workers',
+                    'autovacuum_naptime', 'shared_preload_libraries',
+                    'log_min_duration_statement', 'track_io_timing',
+                    'track_activities', 'track_counts'
+                )
+                ORDER BY name
+            """)
+            return [{"name": r["name"], "value": r["setting"],
+                     "unit": r["unit"] or "", "desc": r["short_desc"]} for r in rows]
+    except Exception as e:
+        return [{"error": str(e)}]
+
+
 @app.post("/api/prune/{table}")
 async def api_prune(table: str):
     if table not in settings.table_limits:
