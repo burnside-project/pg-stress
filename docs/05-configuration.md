@@ -100,4 +100,18 @@ Or set individual variables (overrides preset):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | — | Required for `make analyze` |
+| `ANTHROPIC_API_KEY` | — | Required for AI analysis (CLI, UI, and API) |
+| `ANALYZER_MODEL` | `claude-sonnet-4-20250514` | Claude model for analysis |
+
+To enable, add to `.env` and restart the control plane:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+```bash
+docker compose up -d control-plane
+```
+
+Three ways to run: `make analyze` (CLI), Control Panel UI at `:3100`, or `POST /analyze` (API).
+See [Control Plane — AI Analysis](04-control-plane.md#ai-analysis) for details.

@@ -322,19 +322,70 @@ Each pattern is a generic template applied to **your** FK chains — not hardcod
 
 ## AI Analyzer
 
-After a stress test, send diagnostics to Claude:
+After a stress test, send diagnostics to Claude for expert analysis.
+
+### Setup
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-make analyze                       # Full report
-make analyze-tuning                # PostgreSQL parameter tuning
+# Add your Anthropic API key to .env
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
+
+# Restart the control plane to pick up the key
+docker compose up -d control-plane
+```
+
+### Run from CLI
+
+```bash
+make analyze                       # Full report — health score, queries, tuning, capacity
+make analyze-tuning                # PostgreSQL parameter tuning recommendations
 make analyze-queries               # Query optimization + N+1 detection
 make analyze-capacity              # Growth projections + capacity limits
 ```
 
-Collects 11 diagnostic datasets from PostgreSQL: top queries, cache misses, temp spills,
-N+1 candidates, database stats, table stats, index stats, unused indexes, connections,
-locks, wait events, and current PG settings.
+### Run from UI
+
+Open the Control Panel (`http://<host>:3100`), scroll to **AI Analyzer**, select a
+focus area, and click **Run Analysis**. Results appear in the report viewer.
+
+### Run from API
+
+```bash
+curl -X POST http://<host>:8100/analyze -H 'Content-Type: application/json' \
+  -d '{"focus": null}'              # Full analysis
+
+curl -X POST http://<host>:8100/analyze -H 'Content-Type: application/json' \
+  -d '{"focus": "tuning"}'          # Tuning only
+
+curl http://<host>:8100/analyze/latest  # View latest report
+```
+
+### What Gets Collected
+
+The analyzer collects 11 diagnostic datasets from PostgreSQL before sending to Claude:
+
+| Dataset | Source | What it reveals |
+|---------|--------|-----------------|
+| Top queries | `pg_stat_statements` | Slowest queries by total time, calls, rows |
+| Cache misses | `pg_stat_statements` | Queries with worst shared buffer hit ratio |
+| Temp spills | `pg_stat_statements` | Queries writing temp files (work_mem too low) |
+| N+1 candidates | `pg_stat_statements` | High-call, low-row queries (ORM anti-pattern) |
+| Database stats | `pg_stat_database` | TPS, cache ratio, deadlocks, temp files |
+| Table stats | `pg_stat_user_tables` | Row counts, dead tuples, sequential scans |
+| Index stats | `pg_stat_user_indexes` | Index usage, scan counts |
+| Unused indexes | `pg_stat_user_indexes` | Indexes with zero scans (wasting write I/O) |
+| Connections | `pg_stat_activity` | Active, idle, idle-in-transaction by state |
+| Locks & waits | `pg_locks` + `pg_stat_activity` | Lock contention, wait events |
+| PG settings | `pg_settings` | Current configuration for tuning recommendations |
+
+### What Claude Reports
+
+| Focus | What you get |
+|-------|-------------|
+| **Full** | Health score (0-100), executive summary, top issues, query fixes, tuning, capacity |
+| **Tuning** | `shared_buffers`, `work_mem`, `effective_cache_size`, checkpoint, autovacuum recommendations |
+| **Queries** | N+1 detection, missing indexes, query rewrites, ORM anti-patterns |
+| **Capacity** | Growth projections, "at what row count does it break", scaling advice |
 
 ## Commands
 
@@ -353,6 +404,78 @@ locks, wait events, and current PG settings.
 | `make healthz` | Check all services |
 | `make report` | Collect comprehensive report |
 | `make clean` | Stop, remove volumes and output |
+
+## Runbook
+
+### Full stress test with AI analysis
+
+```bash
+# 1. Clone and configure
+git clone https://github.com/dataalgebra-engineering/pg-stress.git
+cd pg-stress && cp .env.example .env
+
+# 2. Edit .env
+PG_HOST=10.29.29.214              # server identity (displayed in UI)
+PG_DATABASE=my_production_db      # match your dump name
+SEED_SCHEMA=false                 # skip built-in schema
+ANTHROPIC_API_KEY=sk-ant-...      # for AI analysis
+
+# 3. Import production data
+make import DUMP=production.dump
+
+# 4. Start with ORM generator
+make up-orm INTENSITY=medium
+
+# 5. Monitor
+open http://localhost:3100          # Control Panel — intensity, inject, WHAT IF
+open http://localhost:8200          # Dashboard — real-time charts
+
+# 6. Run stress scenarios from the UI or CLI
+curl -X POST http://localhost:8100/inject \
+  -H 'Content-Type: application/json' \
+  -d '{"table":"orders","rows":5000000}'
+
+curl -X POST http://localhost:8100/ladder \
+  -H 'Content-Type: application/json' \
+  -d '{"steps":[10,25,50,100,200],"phase_duration":180,"mode":"mixed"}'
+
+# 7. AI analysis
+make analyze                        # Full report
+make analyze-tuning                 # Just PG parameter tuning
+make analyze-queries                # Just query optimization
+
+# 8. Collect raw report
+make report                         # Saves to out/report-<timestamp>/
+
+# 9. Cleanup
+make down                           # Stop and remove volumes
+```
+
+### Quick validation (no production data)
+
+```bash
+git clone https://github.com/dataalgebra-engineering/pg-stress.git
+cd pg-stress
+make up                             # Seeds 18-table e-commerce (~30M rows)
+# Wait ~10 min for seeding, then:
+open http://localhost:3100
+```
+
+### Remote deployment
+
+```bash
+# Deploy to a remote server
+make deploy DEPLOY_HOST=4           # SSH alias
+
+# Or deploy full stack
+make deploy-full DEPLOY_HOST=4
+
+# Run pgbench on remote
+make bench-remote DEPLOY_HOST=4
+
+# Collect report from remote
+make report-remote DEPLOY_HOST=4
+```
 
 ## Documentation
 

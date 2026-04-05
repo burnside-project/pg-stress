@@ -178,3 +178,51 @@ open http://localhost:3100
 export ANTHROPIC_API_KEY=sk-ant-...
 make analyze
 ```
+
+## Runbook: Full Stress Test with AI Analysis
+
+End-to-end workflow from dump to AI report:
+
+```bash
+# 1. Configure
+cp .env.example .env
+# Edit .env:
+#   PG_HOST=10.29.29.214
+#   PG_DATABASE=my_production_db
+#   SEED_SCHEMA=false
+#   ANTHROPIC_API_KEY=sk-ant-...
+
+# 2. Import production dump
+make import DUMP=production.dump
+
+# 3. Start with ORM generator (auto-discovers your schema)
+make up-orm INTENSITY=medium
+
+# 4. Open dashboards
+open http://localhost:3100              # Control Panel
+open http://localhost:8200              # Metrics Dashboard
+
+# 5. Let it run for 10-30 minutes to build up pg_stat_statements data
+
+# 6. Run WHAT IF scenarios (from UI or API)
+# Inject rows:
+curl -X POST http://localhost:8100/inject \
+  -H 'Content-Type: application/json' \
+  -d '{"table":"orders","rows":5000000}'
+
+# Growth ladder:
+curl -X POST http://localhost:8100/ladder \
+  -H 'Content-Type: application/json' \
+  -d '{"steps":[10,25,50,100,200],"phase_duration":180,"mode":"mixed"}'
+
+# 7. AI analysis
+make analyze                            # Full report
+make analyze-tuning                     # PG parameter tuning only
+make analyze-queries                    # Query optimization only
+
+# 8. Save raw data
+make report                             # Saves to out/report-<timestamp>/
+
+# 9. Cleanup
+make down
+```
