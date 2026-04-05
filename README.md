@@ -28,6 +28,10 @@ After the test, Claude analyzes the diagnostics and gives tuning advice.
 
 - **Named Test Runs** — Start, stop, and compare tests. Every test resets to a known
   baseline (production dump). Before/after snapshots saved to SQLite.
+- **Run on Managed PostgreSQL** — Private managed PostgreSQL validation — Load production-like 
+  data into a private managed PostgreSQL instance, deploy pg-stress on a test host in 
+  the same VPC/VNet or connected private network, and run validation without exposing 
+  the database to the public internet.
 - **Live Activity Ticker** — Real queries from `pg_stat_activity` updated every 2s,
   color-coded by type (SELECT, INSERT, JOIN, EXISTS), with table names and durations.
 - **Schema Introspection** — Auto-discovers tables, FKs, indexes, classifies each table
@@ -95,7 +99,7 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
 
 ---
 
-> ### Metrics Dashboard (`:8200`) — Get AI emabed tuning advise
+> ### Metrics Dashboard (`:8200`) — Get AI enabeled tuning advise
 > ![Dashboard](assets/ai-analyzer.png)
 >
 > `http://<host>:8200` —  After the test, Claude analyzes the diagnostics and gives tuning advice.
@@ -109,7 +113,7 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
 >
 > `http://<host>:8200` — View realtime Postgresql Config Parameters
 > 
-> No need to dig into your config file. Refind the config pram and restart the server to shadow your Production Server!
+> No need to dig into your config file. Refine your config prams and restart TEST server to shadow your Production Server Configs!
 
 ## Install
 
