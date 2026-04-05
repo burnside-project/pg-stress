@@ -110,7 +110,7 @@ done
 Or pin to a specific version:
 
 ```bash
-docker pull ghcr.io/dataalgebra-engineering/pg-stress/load-generator:v1.0.0-rc13
+docker pull ghcr.io/dataalgebra-engineering/pg-stress/load-generator:v1.0.0-rc14
 ```
 
 See [Releases](https://github.com/dataalgebra-engineering/pg-stress/releases) for all versions and changelogs.
