@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| **Latest RC** | [`v1.0.0-rc15`](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc15) |
+| **Latest RC** | [`v1.0.0-rc16`](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc16) |
 | **Target** | `v1.0.0` |
 | **Date** | 2026-04-05 |
 | **Platforms** | `linux/amd64`, `linux/arm64` |
@@ -16,7 +16,7 @@
 ```bash
 # Latest RC
 for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
-  docker pull ghcr.io/dataalgebra-engineering/pg-stress/${svc}:v1.0.0-rc15
+  docker pull ghcr.io/dataalgebra-engineering/pg-stress/${svc}:v1.0.0-rc16
 done
 ```
 
@@ -24,6 +24,7 @@ done
 
 | Version | Type | Date |
 |---------|------|------|
+| [v1.0.0-rc16](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc16) | RC | 2026-04-05 |
 | [v1.0.0-rc15](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc15) | RC | 2026-04-05 |
 | [v1.0.0-rc14](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc14) | RC | 2026-04-05 |
 | [v1.0.0-rc13](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc13) | RC | 2026-04-05 |
