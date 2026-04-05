@@ -169,6 +169,17 @@ async def api_reset():
     return {"status": "ok", "message": "All samples cleared"}
 
 
+@app.get("/api/analytics")
+async def api_analytics(minutes: int = Query(60)):
+    """DuckDB-powered analytics summary over the last N minutes."""
+    from app.analytics import summary, tps_by_minute, growth_rate
+    return {
+        "summary": summary(minutes),
+        "tps_by_minute": tps_by_minute(minutes),
+        "growth": growth_rate(),
+    }
+
+
 @app.get("/api/config")
 async def api_config():
     return {

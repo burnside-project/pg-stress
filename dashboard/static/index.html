@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Burnside Project — Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=5">
+    <link rel="stylesheet" href="/static/style.css?v=6">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
@@ -65,10 +65,25 @@
     <!-- Main Content -->
     <div class="main-content">
 
+        <!-- Safety Banner -->
+        <div id="safety-banner" style="background:#fef3c7; border:2px solid #f59e0b; border-radius:8px; padding:12px 20px; margin-bottom:16px; display:flex; align-items:center; gap:12px">
+            <div style="font-size:24px">&#9888;</div>
+            <div>
+                <div style="font-size:13px; font-weight:700; color:#92400e">TEST ENVIRONMENT — Isolated Database</div>
+                <div id="safety-target" style="font-size:11px; color:#92400e">Loading target info...</div>
+            </div>
+        </div>
+
         <div style="display:flex; align-items:center; margin-bottom:16px">
             <div>
                 <div style="font-size:18px; font-weight:700; color:#1e293b">Metrics Dashboard</div>
                 <div style="font-size:12px; color:#94a3b8">Real-time PostgreSQL metrics — TPS, cache ratio, connections, table growth</div>
+            </div>
+            <div style="flex:1"></div>
+            <!-- DB Target Badge -->
+            <div id="db-target-badge" style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:8px 16px; text-align:right">
+                <div id="db-target-host" style="font-size:14px; font-weight:700; color:#1e40af">...</div>
+                <div id="db-target-db" style="font-size:11px; color:#3b82f6">loading...</div>
             </div>
         </div>
 
@@ -205,6 +220,6 @@
 
     </div>
 
-    <script src="/static/dashboard.js?v=5"></script>
+    <script src="/static/dashboard.js?v=6"></script>
 </body>
 </html>

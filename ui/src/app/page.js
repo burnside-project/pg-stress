@@ -233,6 +233,20 @@ export default function Home() {
       {/* ═══ Main Content ══════════════════════════════════════════════ */}
       <main style={s.main}>
 
+        {/* Safety Banner */}
+        <div style={{
+          background: "#fef3c7", border: "2px solid #f59e0b", borderRadius: 8, padding: "12px 20px",
+          marginBottom: 16, display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <div style={{ fontSize: 24 }}>&#9888;</div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>TEST ENVIRONMENT — Isolated Database</div>
+            <div style={{ fontSize: 11, color: "#92400e" }}>
+              Target: <strong>{config?.database?.host || "?"}:{config?.database?.port || "?"} / {config?.database?.database || "?"}</strong> — This is a disposable test database running in a Docker container. All operations (inject, bulk update, chaos) write directly to this database. Not connected to production.
+            </div>
+          </div>
+        </div>
+
         {/* Console Header */}
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
           <div>
@@ -264,14 +278,25 @@ export default function Home() {
           </div>
           <div style={s.grid}>
             <div style={s.card("#8b5cf6")}>
-              <div style={s.cardTitle}>Database Target</div>
-              <div style={s.cardDesc}>The PostgreSQL instance under test.</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <div style={s.cardTitle}>Database Target</div>
+                <span style={{ background: "#dc2626", color: "#fff", fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 10, letterSpacing: 1 }}>TEST DB</span>
+              </div>
+              <div style={s.cardDesc}>Isolated PostgreSQL container — safe to stress, inject, and destroy.</div>
+              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: 12, marginBottom: 8 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#1e40af", marginBottom: 4 }}>
+                  {config?.database?.host || "localhost"}:{config?.database?.port || 5434}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#1e40af" }}>
+                  {config?.database?.database || "testdb"}
+                </div>
+                <div style={{ fontSize: 11, color: "#3b82f6", marginTop: 4 }}>
+                  {db.db_size || "..."} — {tables.length} tables — {db.connections ?? "?"} connections
+                </div>
+              </div>
               <table style={s.table}>
                 <tbody>
-                  <tr><td style={{ ...s.td, color: "#64748b", width: 80, fontWeight: 500 }}>Host</td><td style={s.td}>{config?.database?.host || "localhost"} : {config?.database?.port || 5434}</td></tr>
-                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>User</td><td style={s.td}>{config?.database?.user || "postgres"}</td></tr>
-                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>Database</td><td style={s.td}>{config?.database?.database || "testdb"}</td></tr>
-                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>Size</td><td style={s.td}>{db.db_size || "..."}</td></tr>
+                  <tr><td style={{ ...s.td, color: "#64748b", width: 80, fontWeight: 500 }}>User</td><td style={s.td}>{config?.database?.user || "postgres"}</td></tr>
                 </tbody>
               </table>
               <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>Configured in .env (PG_HOST, PG_USER, PG_PASSWORD, PG_DATABASE)</div>

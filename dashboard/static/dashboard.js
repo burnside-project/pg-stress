@@ -310,6 +310,24 @@ document.getElementById('reset-btn').addEventListener('click', async () => {
 const cpLink = document.getElementById('link-control-panel');
 if (cpLink) cpLink.href = `${location.protocol}//${location.hostname}:3100`;
 
+// ─── DB target badge (from control plane) ───────────────────────────
+
+async function loadDbTarget() {
+    try {
+        const res = await fetch(`${location.protocol}//${location.hostname}:8100/config`);
+        const data = await res.json();
+        const db = data.database || {};
+        const host = db.host || 'localhost';
+        const port = db.port || 5434;
+        const dbname = db.database || 'testdb';
+        document.getElementById('db-target-host').textContent = `${host}:${port}`;
+        document.getElementById('db-target-db').textContent = dbname;
+        document.getElementById('safety-target').textContent =
+            `Target: ${host}:${port} / ${dbname} — Disposable test database in Docker container. Not connected to production.`;
+    } catch {}
+}
+loadDbTarget();
+
 
 // ─── Auto-refresh ────────────────────────────────────────────────────
 
