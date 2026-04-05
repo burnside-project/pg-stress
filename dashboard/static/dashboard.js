@@ -259,11 +259,14 @@ function updateTablesPanel(data) {
 
 function updateLoadgenPanel(loadgen) {
     const panel = document.getElementById('loadgen-panel');
+    const heading = document.getElementById('loadgen-heading');
     if (!loadgen) {
         panel.style.display = 'none';
+        if (heading) heading.style.display = 'none';
         return;
     }
     panel.style.display = 'block';
+    if (heading) heading.style.display = 'flex';
 
     const cardsDiv = document.getElementById('loadgen-cards');
     const ops = loadgen.ops || {};

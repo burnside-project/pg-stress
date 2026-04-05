@@ -52,13 +52,12 @@
     <div class="main-content">
 
         <header>
-            <div>
-                <span id="scenario-name" style="font-weight:600; color:#1e293b">-</span>
-                <span style="color:#94a3b8; margin:0 8px">|</span>
-                <span id="elapsed" style="color:#64748b">-</span>
+            <div style="display:flex; align-items:center; gap:16px">
+                <span id="scenario-name" style="font-size:14px; font-weight:600; color:#1e293b">-</span>
+                <span style="font-size:12px; color:#94a3b8" id="elapsed">-</span>
+                <span style="font-size:12px; color:#94a3b8" id="samples-count">-</span>
             </div>
             <div class="meta">
-                <span id="samples-count">-</span>
                 <span class="badge" id="status-badge">running</span>
                 <button id="reset-btn">Reset</button>
             </div>
@@ -107,6 +106,11 @@
             </div>
         </div>
 
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #e2e8f0">
+            <span style="font-size:15px; font-weight:700; color:#1e293b">Charts</span>
+            <span style="font-size:11px; color:#94a3b8">— Real-time metrics over time</span>
+        </div>
+
         <div class="time-filter">
             <button data-range="600" class="active">10m</button>
             <button data-range="3600">1h</button>
@@ -145,13 +149,23 @@
             </div>
         </div>
 
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #e2e8f0" id="loadgen-heading" style="display:none">
+            <span style="font-size:15px; font-weight:700; color:#1e293b">Load Generator</span>
+            <span style="font-size:11px; color:#94a3b8">— Operation counts from raw SQL generator</span>
+        </div>
+
         <div class="loadgen-panel" id="loadgen-panel" style="display:none">
-            <h3>Load Generator Stats</h3>
+            <h3 style="display:none">Load Generator Stats</h3>
             <div class="cards" id="loadgen-cards"></div>
         </div>
 
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #e2e8f0">
+            <span style="font-size:15px; font-weight:700; color:#1e293b">Table Sizes & Safety Limits</span>
+            <span style="font-size:11px; color:#94a3b8">— Row counts, dead tuples, growth tracking</span>
+        </div>
+
         <div class="tables-panel">
-            <h3>Table Sizes & Safety Limits</h3>
+            <h3 style="display:none">Table Sizes & Safety Limits</h3>
             <table id="tables-table">
                 <thead>
                     <tr>
