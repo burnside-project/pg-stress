@@ -123,8 +123,7 @@ class MetricsStore:
         if not row:
             return None
         d = json.loads(row[0])
-        s = MetricsSample()
-        s.timestamp = datetime.fromisoformat(d["timestamp"])
+        s = MetricsSample(timestamp=datetime.fromisoformat(d["timestamp"]))
         for k, v in d.items():
             if k != "timestamp" and hasattr(s, k):
                 setattr(s, k, v)
