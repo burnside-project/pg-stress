@@ -1038,6 +1038,46 @@ export default function Home() {
           </div>
         )}
 
+        {/* ═══ Footer ═════════════════════════════════════════════ */}
+        <footer style={{ borderTop: "1px solid #e2e8f0", marginTop: 40, paddingTop: 24, paddingBottom: 24 }}>
+          <div style={{ display: "flex", gap: 40, flexWrap: "wrap", marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>Burnside Project</div>
+              <div style={{ fontSize: 11, color: "#94a3b8", maxWidth: 280, lineHeight: 1.6 }}>
+                Transform signals into actionable predictions. AI-powered PostgreSQL observability, stress testing, and capacity planning.
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#64748b", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Products</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <a href="https://burnsideproject.ai" target="_blank" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>burnsideproject.ai</a>
+                <a href="https://github.com/burnside-project/pg-stress" target="_blank" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>pg-stress</a>
+                <a href="https://github.com/burnside-project/pg-collector" target="_blank" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>pg-collector</a>
+                <a href="https://github.com/burnside-project/pg-warehouse" target="_blank" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>pg-warehouse</a>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#64748b", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Company</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <a href="https://burnsideproject.ai" target="_blank" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>About</a>
+                <a href="https://burnsideproject.ai/blog" target="_blank" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>Blog</a>
+                <a href="https://burnsideproject.ai/contact" target="_blank" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>Contact</a>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#64748b", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Connect</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <a href="https://github.com/burnside-project" target="_blank" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>GitHub</a>
+                <a href="https://linkedin.com/company/burnside-project" target="_blank" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>LinkedIn</a>
+                <a href="https://x.com/burnsideproject" target="_blank" style={{ fontSize: 12, color: "#2563eb", textDecoration: "none" }}>X (Twitter)</a>
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize: 10, color: "#94a3b8" }}>
+            &copy; 2025-2026 <a href="https://burnsideproject.ai" target="_blank" style={{ color: "#94a3b8" }}>Burnside Project</a>. Apache License 2.0. Built with Claude Code.
+          </div>
+        </footer>
+
       </main>
     </div>
   )

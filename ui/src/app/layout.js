@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Burnside Project — pg-stress",
-  description: "PostgreSQL stress test control plane",
+  title: "Burnside Project — pg-stress | Control Panel",
+  description: "PostgreSQL stress test control plane — test runs, WHAT IF scenarios, AI analysis",
 }
 
 export default function RootLayout({ children }) {

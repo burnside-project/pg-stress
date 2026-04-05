@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Burnside Project — Dashboard</title>
+    <title>Burnside Project — pg-stress | Metrics Dashboard</title>
     <link rel="stylesheet" href="/static/style.css?v=8">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -252,8 +252,48 @@
             <div class="safety-events" id="safety-events"></div>
         </div>
 
+        <!-- Footer -->
+        <footer style="border-top:1px solid #e2e8f0; margin-top:40px; padding-top:24px; padding-bottom:24px">
+            <div style="display:flex; gap:40px; flex-wrap:wrap; margin-bottom:16px">
+                <div>
+                    <div style="font-size:14px; font-weight:700; color:#1e293b; margin-bottom:8px">Burnside Project</div>
+                    <div style="font-size:11px; color:#94a3b8; max-width:280px; line-height:1.6">
+                        Transform signals into actionable predictions. AI-powered PostgreSQL observability, stress testing, and capacity planning.
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:11px; font-weight:600; color:#64748b; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px">Products</div>
+                    <div style="display:flex; flex-direction:column; gap:4px">
+                        <a href="https://burnsideproject.ai" target="_blank" style="font-size:12px; color:#2563eb; text-decoration:none">burnsideproject.ai</a>
+                        <a href="https://github.com/burnside-project/pg-stress" target="_blank" style="font-size:12px; color:#2563eb; text-decoration:none">pg-stress</a>
+                        <a href="https://github.com/burnside-project/pg-collector" target="_blank" style="font-size:12px; color:#2563eb; text-decoration:none">pg-collector</a>
+                        <a href="https://github.com/burnside-project/pg-warehouse" target="_blank" style="font-size:12px; color:#2563eb; text-decoration:none">pg-warehouse</a>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:11px; font-weight:600; color:#64748b; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px">Company</div>
+                    <div style="display:flex; flex-direction:column; gap:4px">
+                        <a href="https://burnsideproject.ai" target="_blank" style="font-size:12px; color:#2563eb; text-decoration:none">About</a>
+                        <a href="https://burnsideproject.ai/blog" target="_blank" style="font-size:12px; color:#2563eb; text-decoration:none">Blog</a>
+                        <a href="https://burnsideproject.ai/contact" target="_blank" style="font-size:12px; color:#2563eb; text-decoration:none">Contact</a>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:11px; font-weight:600; color:#64748b; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px">Connect</div>
+                    <div style="display:flex; flex-direction:column; gap:4px">
+                        <a href="https://github.com/burnside-project" target="_blank" style="font-size:12px; color:#2563eb; text-decoration:none">GitHub</a>
+                        <a href="https://linkedin.com/company/burnside-project" target="_blank" style="font-size:12px; color:#2563eb; text-decoration:none">LinkedIn</a>
+                        <a href="https://x.com/burnsideproject" target="_blank" style="font-size:12px; color:#2563eb; text-decoration:none">X (Twitter)</a>
+                    </div>
+                </div>
+            </div>
+            <div style="font-size:10px; color:#94a3b8">
+                &copy; 2025-2026 <a href="https://burnsideproject.ai" target="_blank" style="color:#94a3b8">Burnside Project</a>. Apache License 2.0. Built with Claude Code.
+            </div>
+        </footer>
+
     </div>
 
-    <script src="/static/dashboard.js?v=8"></script>
+    <script src="/static/dashboard.js?v=9"></script>
 </body>
 </html>
