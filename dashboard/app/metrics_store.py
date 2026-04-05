@@ -39,6 +39,15 @@ class MetricsStore:
         log.info("metrics store: sqlite at %s", DB_PATH)
 
     def _init_tables(self):
+        # Migrate: add test_run_id if samples table exists without it.
+        try:
+            cols = [r[1] for r in self._conn.execute("PRAGMA table_info(samples)").fetchall()]
+            if cols and "test_run_id" not in cols:
+                self._conn.execute("ALTER TABLE samples ADD COLUMN test_run_id TEXT")
+                self._conn.commit()
+        except Exception:
+            pass
+
         self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS baselines (
                 id TEXT PRIMARY KEY,
