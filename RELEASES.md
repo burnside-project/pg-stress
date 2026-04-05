@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| **Latest RC** | [`v1.0.0-rc16`](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc16) |
+| **Latest RC** | [`v1.0.0-rc17`](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc17) |
 | **Target** | `v1.0.0` |
 | **Date** | 2026-04-05 |
 | **Platforms** | `linux/amd64`, `linux/arm64` |
@@ -16,7 +16,7 @@
 ```bash
 # Latest RC
 for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
-  docker pull ghcr.io/burnside-project/pg-stress/${svc}:v1.0.0-rc16
+  docker pull ghcr.io/dataalgebra-engineering/pg-stress/${svc}:v1.0.0-rc17
 done
 ```
 
@@ -24,21 +24,22 @@ done
 
 | Version | Type | Date |
 |---------|------|------|
-| [v1.0.0-rc16](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc16) | RC | 2026-04-05 |
-| [v1.0.0-rc15](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc15) | RC | 2026-04-05 |
-| [v1.0.0-rc14](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc14) | RC | 2026-04-05 |
-| [v1.0.0-rc13](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc13) | RC | 2026-04-05 |
-| [v1.0.0-rc12](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc12) | RC | 2026-04-05 |
-| [v1.0.0-rc11](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc11) | RC | 2026-04-05 |
-| [v1.0.0-rc10](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc10) | RC | 2026-04-05 |
-| [v1.0.0-rc9](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc9) | RC | 2026-04-05 |
-| [v1.0.0-rc8](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc8) | RC | 2026-04-04 |
-| [v1.0.0-rc7](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc7) | RC | 2026-04-04 |
-| [v1.0.0-rc6](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc6) | RC | 2026-04-04 |
-| [vrc1-rc1](https://github.com/burnside-project/pg-stress/releases/tag/vrc1-rc1) | RC | 2026-04-03 |
-| [v1.0.0-rc5](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc5) | RC | 2026-04-03 |
-| [v1.0.0-rc4](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc4) | RC | 2026-04-03 |
-| [v1.0.0-rc3](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc3) | RC | 2026-04-03 |
-| [v1.0.0-rc2](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc2) | RC | 2026-04-02 |
-| [v1.0.0-rc1](https://github.com/burnside-project/pg-stress/releases/tag/v1.0.0-rc1) | RC | 2026-04-02 |
+| [v1.0.0-rc17](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc17) | RC | 2026-04-05 |
+| [v1.0.0-rc16](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc16) | RC | 2026-04-05 |
+| [v1.0.0-rc15](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc15) | RC | 2026-04-05 |
+| [v1.0.0-rc14](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc14) | RC | 2026-04-05 |
+| [v1.0.0-rc13](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc13) | RC | 2026-04-05 |
+| [v1.0.0-rc12](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc12) | RC | 2026-04-05 |
+| [v1.0.0-rc11](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc11) | RC | 2026-04-05 |
+| [v1.0.0-rc10](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc10) | RC | 2026-04-05 |
+| [v1.0.0-rc9](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc9) | RC | 2026-04-05 |
+| [v1.0.0-rc8](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc8) | RC | 2026-04-04 |
+| [v1.0.0-rc7](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc7) | RC | 2026-04-04 |
+| [v1.0.0-rc6](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc6) | RC | 2026-04-04 |
+| [vrc1-rc1](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/vrc1-rc1) | RC | 2026-04-03 |
+| [v1.0.0-rc5](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc5) | RC | 2026-04-03 |
+| [v1.0.0-rc4](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc4) | RC | 2026-04-03 |
+| [v1.0.0-rc3](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc3) | RC | 2026-04-03 |
+| [v1.0.0-rc2](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc2) | RC | 2026-04-02 |
+| [v1.0.0-rc1](https://github.com/dataalgebra-engineering/pg-stress/releases/tag/v1.0.0-rc1) | RC | 2026-04-02 |
 
