@@ -224,7 +224,7 @@ export default function Home() {
           <div style={s.navDot("#3b82f6")} />
           Metrics Dashboard
         </a>
-        <a href="https://github.com/dataalgebra-engineering/pg-stress" target="_blank" style={{ ...s.navItem(false), textDecoration: "none" }}>
+        <a href="https://github.com/burnside-project/pg-stress" target="_blank" style={{ ...s.navItem(false), textDecoration: "none" }}>
           <div style={s.navDot("#64748b")} />
           Documentation
         </a>
