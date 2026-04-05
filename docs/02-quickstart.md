@@ -130,12 +130,15 @@ Once the stack is running, use these tools to see what's happening:
 
 | URL | What you see |
 |-----|-------------|
-| `http://<host>:3100` | **Control Panel** — intensity controls, BYOD import, inject rows, bulk update, growth ladders, AI analysis, schema introspection |
-| `http://<host>:8200` | **Dashboard** — real-time charts: TPS, cache hit ratio, connections, table sizes with live growth deltas |
+| `http://<host>:3100` | **Control Panel** — named test runs, live activity ticker, intensity controls, BYOD import, inject rows, bulk update, growth ladders, schema introspection, AI analysis, test history, data management |
+| `http://<host>:8200` | **Dashboard** — live activity ticker, real-time charts (TPS, cache ratio, connections), table sizes with live growth deltas (+N/-N), load generator stats |
 | `http://<host>:8100/docs` | **API Docs** — Swagger UI for all control plane endpoints |
 
-Both portals have a left sidebar with a **Navigate** section to switch between them,
-plus a **Documentation** link to the GitHub repository.
+Both portals have:
+- **Left sidebar** with navigation, Burnside Project links, and Documentation
+- **Safety banner** identifying the test database target
+- **Live Activity Ticker** showing real queries from PostgreSQL
+- **Footer** with links to [burnsideproject.ai](https://burnsideproject.ai), pg-collector, pg-warehouse
 
 ### Live Activity Ticker
 
