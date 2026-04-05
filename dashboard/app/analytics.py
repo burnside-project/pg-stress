@@ -5,9 +5,7 @@ time-series rollups, growth rates, anomaly detection, before/after comparisons.
 
 DuckDB is embedded — no server, no config. Reads SQLite directly.
 """
-import json
 import logging
-from pathlib import Path
 
 import duckdb
 

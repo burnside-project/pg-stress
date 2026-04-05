@@ -13,6 +13,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.analytics import growth_rate, summary, tps_by_minute
 from app.config import Settings
 from app.metrics_store import MetricsStore
 from app.pg_poller import PGPoller
@@ -308,7 +309,6 @@ async def api_baselines():
 @app.get("/api/analytics")
 async def api_analytics(minutes: int = Query(60)):
     """DuckDB-powered analytics summary over the last N minutes."""
-    from app.analytics import summary, tps_by_minute, growth_rate
     return {
         "summary": summary(minutes),
         "tps_by_minute": tps_by_minute(minutes),
