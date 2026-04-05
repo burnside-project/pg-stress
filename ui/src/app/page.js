@@ -109,6 +109,9 @@ function fmt(n) { return n != null ? Number(n).toLocaleString() : "—" }
 // ── Nav sections ────────────────────────────────────────────────────────
 
 const NAV = [
+  { section: "Test Runs" },
+  { id: "testrun", label: "Active Test", dot: "#dc2626", tip: "Start, stop, and manage named test runs" },
+  { id: "history", label: "Test History", dot: "#f59e0b", tip: "Past tests with before/after comparisons" },
   { section: "Stress Test" },
   { id: "target", label: "Database Target", dot: "#8b5cf6", tip: "Configure PG host, credentials, intensity, import dumps" },
   { id: "operations", label: "Data Operations", dot: "#f59e0b", tip: "Inject rows, bulk update, simulate table growth" },
@@ -132,6 +135,12 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState("target")
   const [flushConfirm, setFlushConfirm] = useState("")
   const [flushResult, setFlushResult] = useState(null)
+  const [activeTest, setActiveTest] = useState(null)
+  const [testHistory, setTestHistory] = useState([])
+  const [newTestName, setNewTestName] = useState("")
+  const [newTestIntensity, setNewTestIntensity] = useState("medium")
+  const [newTestDump, setNewTestDump] = useState("")
+  const [resetOnStart, setResetOnStart] = useState(true)
 
   const [f, setF] = useState({
     injectTable: "orders", injectRows: 1000000,
@@ -179,6 +188,8 @@ export default function Home() {
   useEffect(() => { api("/config").then(setConfig).catch(() => {}) }, [])
   useEffect(() => {
     fetch(`${ORM_API}/schema`).then(r => r.json()).then(setOrmSchema).catch(() => {})
+    api("/tests/active").then(setActiveTest).catch(() => {})
+    api("/tests").then(setTestHistory).catch(() => {})
   }, [])
 
   const currentIntensity = config?.intensity?.current || "medium"
@@ -253,13 +264,169 @@ export default function Home() {
             <div style={{ fontSize: 18, fontWeight: 700, color: "#1e293b" }}>Control Panel</div>
             <div style={{ fontSize: 12, color: "#94a3b8" }}>Stress test orchestration — intensity, WHAT IF scenarios, AI analysis</div>
           </div>
-          <div style={{ flex: 1 }} />
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {Object.entries(svcs).filter(([,v]) => v.status === "running").map(([k]) => (
-              <span key={k} style={s.badge("#16a34a")}>{k}</span>
-            ))}
+        </div>
+
+        {/* ═══ SECTION: Active Test Run ═══════════════════════════════ */}
+        <div id="section-testrun" style={s.section}>
+          <div style={s.sectionHead}>
+            <span style={s.sectionTitle}>Test Run</span>
+            <span style={s.sectionSub}>— Named test runs with baseline reset and before/after tracking</span>
+          </div>
+
+          {activeTest && activeTest.status === "running" ? (
+            /* Active test banner */
+            <div style={{ background: "#f0fdf4", border: "2px solid #16a34a", borderRadius: 8, padding: 20, marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#16a34a", animation: "pulse 2s infinite" }} />
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#166534" }}>{activeTest.name}</div>
+                <Badge status="running" />
+                <div style={{ flex: 1 }} />
+                <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>{activeTest.intensity?.toUpperCase()}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#166534", marginBottom: 8 }}>
+                Started: {activeTest.started_at?.split("T")[0]} {activeTest.started_at?.split("T")[1]?.split(".")[0]}
+                {activeTest.db_before && ` — Baseline: ${activeTest.db_before.total_rows?.toLocaleString() || "?"} rows (${activeTest.db_before.db_size || "?"})`}
+              </div>
+              {activeTest.db_before?.tables && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                  {Object.entries(activeTest.db_before.tables).slice(0, 6).map(([t, info]) => (
+                    <span key={t} style={{ background: "#dcfce7", padding: "2px 8px", borderRadius: 4, fontSize: 10, color: "#166534" }}>
+                      {t}: {info.rows?.toLocaleString()}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <button style={{ ...s.btn, ...s.btnRed }} disabled={loading.stopTest}
+                onClick={async () => {
+                  await act("stopTest", () => post("/tests/stop", {}))
+                  const [at, th] = await Promise.all([api("/tests/active"), api("/tests")])
+                  setActiveTest(at); setTestHistory(th)
+                }}>
+                {loading.stopTest ? "Stopping..." : "Stop & Save Test"}
+              </button>
+            </div>
+          ) : (
+            /* New test form */
+            <div style={s.grid}>
+              <div style={s.card("#16a34a")}>
+                <div style={s.cardTitle}>Start New Test</div>
+                <div style={s.cardDesc}>Every test starts from a known baseline. The database is reset before each run.</div>
+                <div style={s.gap}>
+                  <label style={s.label}>Test Name</label>
+                  <input style={s.input} value={newTestName} onChange={e => setNewTestName(e.target.value)}
+                    placeholder="e.g., baseline-medium, after-btree-index, high-chaos" />
+                </div>
+                <div style={s.gap}>
+                  <label style={s.label}>Intensity</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {["low", "medium", "high"].map(level => (
+                      <button key={level} style={{
+                        ...s.btn, flex: 1, padding: "10px 8px",
+                        background: newTestIntensity === level ? (level === "low" ? "#dcfce7" : level === "medium" ? "#fef3c7" : "#fee2e2") : "#f8fafc",
+                        border: newTestIntensity === level ? `2px solid ${level === "low" ? "#16a34a" : level === "medium" ? "#f59e0b" : "#dc2626"}` : "1px solid #e2e8f0",
+                        color: newTestIntensity === level ? (level === "low" ? "#16a34a" : level === "medium" ? "#92400e" : "#dc2626") : "#94a3b8",
+                      }} onClick={() => setNewTestIntensity(level)}>
+                        {level.charAt(0).toUpperCase() + level.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={s.gap}>
+                  <label style={{ ...s.label, display: "flex", alignItems: "center", gap: 6 }}>
+                    <input type="checkbox" checked={resetOnStart} onChange={e => setResetOnStart(e.target.checked)} />
+                    Reset database to baseline before starting
+                  </label>
+                </div>
+                {resetOnStart && (
+                  <div style={s.gap}>
+                    <label style={s.label}>Baseline dump path (on server)</label>
+                    <input style={s.input} value={newTestDump} onChange={e => setNewTestDump(e.target.value)}
+                      placeholder="/tmp/soak_test.dump" />
+                  </div>
+                )}
+                <button style={{ ...s.btn, ...s.btnGreen, width: "100%", padding: "10px", marginTop: 8 }}
+                  disabled={!newTestName || loading.startTest}
+                  onClick={async () => {
+                    await act("startTest", () => post("/tests/start", {
+                      name: newTestName,
+                      intensity: newTestIntensity,
+                      baseline_dump: resetOnStart && newTestDump ? newTestDump : null,
+                    }))
+                    const [at, th] = await Promise.all([api("/tests/active"), api("/tests")])
+                    setActiveTest(at); setTestHistory(th)
+                    setNewTestName("")
+                  }}>
+                  {loading.startTest ? "Starting..." : `Start Test: "${newTestName || "..."}"`}
+                </button>
+              </div>
+
+              <div style={s.card("#16a34a")}>
+                <div style={s.cardTitle}>How It Works</div>
+                <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>
+                  <strong>1. Reset to baseline</strong> — Restore from your production dump so every test starts from the same known state.<br/><br/>
+                  <strong>2. Run at intensity</strong> — ORM + SQL generators stress the database at Low, Medium, or High.<br/><br/>
+                  <strong>3. Inject & observe</strong> — Use Data Operations to inject rows, bulk update. Watch metrics in real-time.<br/><br/>
+                  <strong>4. Stop & save</strong> — Final DB state captured. Before/after comparison saved to history.<br/><br/>
+                  <strong>5. Compare</strong> — View any past test, compare TPS, cache ratio, growth across runs.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ═══ SECTION: Test History ══════════════════════════════════ */}
+        {testHistory.length > 0 && (
+        <div id="section-history" style={s.section}>
+          <div style={s.sectionHead}>
+            <span style={s.sectionTitle}>Test History</span>
+            <span style={s.sectionSub}>— Past test runs with before/after comparisons</span>
+            <div style={{ flex: 1 }} />
+            <button style={{ ...s.btn, ...s.btnGhost, fontSize: 11 }}
+              onClick={async () => setTestHistory(await api("/tests"))}>Refresh</button>
+          </div>
+          <div style={{ overflow: "auto" }}>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Name</th>
+                  <th style={s.th}>Intensity</th>
+                  <th style={s.th}>Status</th>
+                  <th style={s.th}>Started</th>
+                  <th style={s.th}>Samples</th>
+                  <th style={s.th}>Before</th>
+                  <th style={s.th}>After</th>
+                  <th style={s.th}>Delta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {testHistory.map(t => {
+                  const beforeRows = t.db_before?.total_rows || 0
+                  const afterRows = t.db_after?.total_rows || 0
+                  const delta = afterRows - beforeRows
+                  return (
+                    <tr key={t.id} style={{ background: t.status === "running" ? "#f0fdf4" : "" }}>
+                      <td style={{ ...s.td, fontWeight: 600 }}>{t.name}</td>
+                      <td style={s.td}><span style={{
+                        background: t.intensity === "low" ? "#dcfce7" : t.intensity === "high" ? "#fee2e2" : "#fef3c7",
+                        color: t.intensity === "low" ? "#166534" : t.intensity === "high" ? "#991b1b" : "#92400e",
+                        padding: "1px 8px", borderRadius: 10, fontSize: 10, fontWeight: 600,
+                      }}>{t.intensity}</span></td>
+                      <td style={s.td}><Badge status={t.status} /></td>
+                      <td style={{ ...s.td, fontSize: 11, color: "#64748b" }}>{t.started_at?.split("T")[0]}</td>
+                      <td style={{ ...s.td, textAlign: "right" }}>{t.sample_count?.toLocaleString()}</td>
+                      <td style={{ ...s.td, fontSize: 11 }}>{beforeRows ? `${beforeRows.toLocaleString()} rows` : "—"}</td>
+                      <td style={{ ...s.td, fontSize: 11 }}>{afterRows ? `${afterRows.toLocaleString()} rows` : "—"}</td>
+                      <td style={{ ...s.td, fontSize: 11, fontWeight: 600, color: delta > 0 ? "#16a34a" : delta < 0 ? "#dc2626" : "#94a3b8" }}>
+                        {delta > 0 ? `+${delta.toLocaleString()}` : delta < 0 ? delta.toLocaleString() : "—"}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
+        )}
 
         {/* Stats Bar */}
         <div style={s.topBar}>

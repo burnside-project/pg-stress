@@ -408,6 +408,49 @@ The analyzer collects 11 diagnostic datasets from PostgreSQL before sending to C
 | `make report` | Collect comprehensive report |
 | `make clean` | Stop, remove volumes and output |
 
+## Test Runs
+
+Every test starts from a **known baseline** — a production dump that defines the starting state.
+The database is reset before each run so results are reproducible and comparable.
+
+```
+1. Import baseline     →  pg_restore production.dump (one time)
+2. Start test          →  Name it, pick intensity, DB resets to baseline
+3. Stress + observe    →  ORM/SQL generators run, inject rows, watch metrics
+4. Stop & save         →  Before/after snapshot saved to SQLite
+5. Compare             →  View any past test, compare across runs
+```
+
+### From the UI
+
+Open `http://<host>:3100`, go to **Test Run** section:
+1. Enter a name (e.g., `baseline-medium`, `after-btree-index`)
+2. Select intensity (Low / Medium / High)
+3. Check "Reset database to baseline" and provide the dump path
+4. Click **Start Test**
+
+### From the API
+
+```bash
+curl -X POST http://<host>:8100/tests/start \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"baseline-medium","intensity":"medium","baseline_dump":"/tmp/soak_test.dump"}'
+
+curl -X POST http://<host>:8100/tests/stop       # Stop and save
+curl http://<host>:8100/tests                     # List all tests
+curl http://<host>:8100/tests/active              # Get active test
+```
+
+### Storage
+
+| Data | Storage | Persists? |
+|------|---------|-----------|
+| Baselines (dump metadata) | SQLite | Yes |
+| Test runs (name, config, before/after) | SQLite | Yes |
+| Metrics time-series (per test run) | SQLite | Yes |
+| Cross-run analytics | DuckDB (reads SQLite) | Computed on demand |
+| AI reports | JSON + Markdown files | Yes |
+
 ## Runbook
 
 ### Full stress test with AI analysis

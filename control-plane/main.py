@@ -751,7 +751,214 @@ def get_report(filename: str):
     return json.loads(path.read_text())
 
 
-# ── Health ───────────────────────────────────────────────────────────────
+# ── Test Runs ────────────────────────────────────────────────────────────
+
+
+class StartTestRequest(BaseModel):
+    name: str
+    intensity: str = "medium"  # low, medium, high
+    baseline_dump: Optional[str] = None  # path to dump for reset; None = keep current DB
+
+
+class StopTestRequest(BaseModel):
+    pass
+
+
+def _snapshot_db() -> dict:
+    """Snapshot current database state: per-table row counts and sizes."""
+    try:
+        tables = {}
+        rows = query("""
+            SELECT relname, n_live_tup, n_dead_tup,
+                   pg_size_pretty(pg_total_relation_size(relid)) AS size,
+                   pg_total_relation_size(relid) AS size_bytes
+            FROM pg_stat_user_tables ORDER BY n_live_tup DESC
+        """)
+        total_rows = 0
+        for r in rows:
+            tables[r["relname"]] = {"rows": r["n_live_tup"], "dead": r["n_dead_tup"], "size": r["size"]}
+            total_rows += r["n_live_tup"]
+
+        db_size = query("SELECT pg_size_pretty(pg_database_size(%s)) AS size", (PG_DATABASE,))
+        return {
+            "database": PG_DATABASE,
+            "total_rows": total_rows,
+            "db_size": db_size[0]["size"] if db_size else "?",
+            "tables": tables,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _reset_db_from_dump(dump_path: str):
+    """Restore database from a dump file (hard reset to baseline)."""
+    log.info("Resetting database from %s", dump_path)
+
+    # Stop generators.
+    for svc in ["load-generator", "load-generator-orm", "pgbench-runner"]:
+        c = find_container(svc)
+        if c and c.status == "running":
+            c.stop(timeout=10)
+            log.info("Stopped %s", svc)
+
+    # Restore dump.
+    result = subprocess.run(
+        ["pg_restore", "--clean", "--if-exists", "--no-owner", "--no-acl",
+         "-h", PG_HOST, "-p", str(PG_PORT), "-U", PG_USER, "-d", PG_DATABASE,
+         "--jobs=4", dump_path],
+        capture_output=True, text=True, timeout=600,
+        env={**os.environ, "PGPASSWORD": PG_PASSWORD},
+    )
+    if result.returncode not in (0, 1):  # pg_restore returns 1 for warnings
+        log.warning("pg_restore warnings: %s", result.stderr[:500])
+
+    # Reset stats.
+    try:
+        execute("SELECT pg_stat_statements_reset()")
+    except Exception:
+        pass
+    try:
+        execute("SELECT pg_stat_reset()")
+    except Exception:
+        pass
+    execute("ANALYZE VERBOSE")
+    log.info("Database reset and analyzed")
+
+
+def _notify_dashboard_test_run(action: str, test_run_id: str, name: str, baseline_id: str,
+                                intensity: str, db_before: dict):
+    """Notify dashboard about test run state changes."""
+    try:
+        import httpx
+        if action == "start":
+            httpx.post("http://dashboard:8000/api/test-run/start", json={
+                "id": test_run_id, "name": name, "baseline_id": baseline_id,
+                "intensity": intensity, "db_before": db_before,
+            }, timeout=5)
+        elif action == "stop":
+            httpx.post("http://dashboard:8000/api/test-run/stop", json={
+                "id": test_run_id, "db_after": db_before,  # db_before here is actually db_after
+            }, timeout=5)
+    except Exception as e:
+        log.warning("Failed to notify dashboard: %s", e)
+
+
+@app.post("/tests/start")
+def start_test(req: StartTestRequest, background_tasks: BackgroundTasks):
+    """Start a new test run. Optionally reset DB from baseline dump."""
+
+    # Stop any running test.
+    # Check dashboard for active run.
+    active = None
+    try:
+        import httpx
+        r = httpx.get("http://dashboard:8000/api/test-run", timeout=5)
+        active = r.json() if r.status_code == 200 else None
+    except Exception:
+        pass
+
+    # If there's a running test, stop it first.
+    if active and active.get("status") == "running":
+        after_snap = _snapshot_db()
+        _notify_dashboard_test_run("stop", active["id"], active["name"], "", "", after_snap)
+
+    # Reset DB if dump path provided.
+    baseline_id = ""
+    if req.baseline_dump:
+        _reset_db_from_dump(req.baseline_dump)
+        # Save/update baseline.
+        snap = _snapshot_db()
+        try:
+            import httpx
+            r = httpx.post("http://dashboard:8000/api/baseline", json={
+                "name": os.path.basename(req.baseline_dump),
+                "dump_path": req.baseline_dump,
+                "tables": snap.get("tables", {}),
+                "total_rows": snap.get("total_rows", 0),
+                "db_size": snap.get("db_size", "?"),
+            }, timeout=5)
+            baseline_id = r.json().get("id", "")
+        except Exception:
+            pass
+
+    # Snapshot before state.
+    db_before = _snapshot_db()
+
+    # Generate test run ID.
+    test_run_id = str(uuid.uuid4())[:8]
+
+    # Notify dashboard to start tracking.
+    _notify_dashboard_test_run("start", test_run_id, req.name, baseline_id, req.intensity, db_before)
+
+    # Set intensity and restart generators.
+    try:
+        from main import _set_intensity
+        _set_intensity(req.intensity)
+    except Exception:
+        pass
+
+    # Restart generators.
+    for svc in ["load-generator", "load-generator-orm"]:
+        c = find_container(svc)
+        if c:
+            try:
+                c.restart(timeout=10)
+            except Exception:
+                pass
+
+    return {
+        "test_run_id": test_run_id,
+        "name": req.name,
+        "intensity": req.intensity,
+        "baseline_reset": bool(req.baseline_dump),
+        "db_before": db_before,
+    }
+
+
+@app.post("/tests/stop")
+def stop_test():
+    """Stop the current test run and save final state."""
+    active = None
+    try:
+        import httpx
+        r = httpx.get("http://dashboard:8000/api/test-run", timeout=5)
+        active = r.json() if r.status_code == 200 else None
+    except Exception:
+        pass
+
+    if not active or active.get("status") != "running":
+        raise HTTPException(400, "No active test run")
+
+    db_after = _snapshot_db()
+    _notify_dashboard_test_run("stop", active["id"], active.get("name", ""), "", "", db_after)
+
+    return {
+        "test_run_id": active["id"],
+        "name": active.get("name"),
+        "db_after": db_after,
+    }
+
+
+@app.get("/tests")
+def list_tests():
+    """List all test runs from dashboard store."""
+    try:
+        import httpx
+        r = httpx.get("http://dashboard:8000/api/test-runs", timeout=5)
+        return r.json() if r.status_code == 200 else []
+    except Exception:
+        return []
+
+
+@app.get("/tests/active")
+def get_active_test():
+    """Get the currently running test."""
+    try:
+        import httpx
+        r = httpx.get("http://dashboard:8000/api/test-run", timeout=5)
+        return r.json() if r.status_code == 200 else {"status": "no_active_test"}
+    except Exception:
+        return {"status": "no_active_test"}
 
 
 # ── Import (BYOD) ────────────────────────────────────────────────────────

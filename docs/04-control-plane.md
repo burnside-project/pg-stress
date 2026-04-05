@@ -25,6 +25,10 @@ curl -s http://<host>:9091/healthz | python3 -m json.tool
 | `/status` | GET | Stack status: services, DB size, connections, per-table stats |
 | `/config` | GET | Database target + current intensity |
 | `/config/intensity` | POST | Switch Low/Medium/High (restarts generators) |
+| `/tests/start` | POST | Start a named test run (optionally reset DB from baseline dump) |
+| `/tests/stop` | POST | Stop active test, save before/after snapshot |
+| `/tests` | GET | List all test runs with before/after comparisons |
+| `/tests/active` | GET | Get the currently running test |
 | `/generators/{name}/start` | POST | Start ORM or pgbench generator |
 | `/generators/{name}/stop` | POST | Stop a generator |
 | `/inject` | POST | Inject N rows into any table |
@@ -32,11 +36,51 @@ curl -s http://<host>:9091/healthz | python3 -m json.tool
 | `/connections` | POST | Connection pressure test |
 | `/ladder` | POST | Growth ladder (find breaking point) |
 | `/import` | POST | Restore a pg_dump (BYOD) |
+| `/flush` | POST | Delete all metrics/reports (requires "DELETE ALL DATA" confirmation) |
 | `/analyze` | POST | Claude AI analysis |
 | `/analyze/latest` | GET | Latest analysis report |
-| `/jobs` | GET | List background jobs |
+| `/jobs` | GET | List background jobs (with progress, before/after) |
 | `/jobs/{id}` | GET | Job status |
 | `/reports` | GET | Saved reports |
+
+## Test Runs
+
+Every test starts from a known baseline. The database is reset before each run.
+
+```bash
+# Start test with DB reset to baseline
+POST /tests/start {
+  "name": "baseline-medium",
+  "intensity": "medium",
+  "baseline_dump": "/tmp/soak_test.dump"
+}
+
+# Start without DB reset
+POST /tests/start { "name": "continued-high", "intensity": "high" }
+
+# Stop and save
+POST /tests/stop
+
+# List all tests (includes before/after row counts)
+GET /tests
+
+# Active test
+GET /tests/active
+```
+
+On start with `baseline_dump`:
+1. Stop all generators
+2. `pg_restore --clean --if-exists` from the dump
+3. Reset `pg_stat_statements` and `pg_stat`
+4. `ANALYZE VERBOSE`
+5. Snapshot DB state (before)
+6. Start generators at requested intensity
+7. Begin collecting metrics tagged with this test run
+
+On stop:
+1. Snapshot DB state (after)
+2. Save before/after to SQLite
+3. Test appears in history with row deltas
 
 ## Intensity Presets
 

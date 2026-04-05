@@ -169,6 +169,60 @@ async def api_reset():
     return {"status": "ok", "message": "All samples cleared"}
 
 
+@app.get("/api/test-run")
+async def api_test_run():
+    """Current active test run info."""
+    run = store.active_test_run()
+    return run or {"status": "no_active_test"}
+
+
+@app.post("/api/test-run/start")
+async def api_start_test_run(data: dict = {}):
+    """Called by control plane to start tracking a test run."""
+    rid = store.start_test_run(
+        name=data.get("name", "unnamed"),
+        baseline_id=data.get("baseline_id", ""),
+        intensity=data.get("intensity", "medium"),
+        db_before=data.get("db_before", {}),
+    )
+    return {"id": rid, "status": "running"}
+
+
+@app.post("/api/test-run/stop")
+async def api_stop_test_run(data: dict = {}):
+    """Called by control plane to stop the active test run."""
+    run = store.active_test_run()
+    if not run:
+        return {"status": "no_active_test"}
+    store.stop_test_run(run["id"], data.get("db_after", {}))
+    return {"id": run["id"], "status": "completed"}
+
+
+@app.get("/api/test-runs")
+async def api_test_runs():
+    """List all test runs."""
+    return store.list_test_runs()
+
+
+@app.post("/api/baseline")
+async def api_save_baseline(data: dict = {}):
+    """Save a baseline snapshot."""
+    bid = store.save_baseline(
+        name=data.get("name", "unnamed"),
+        dump_path=data.get("dump_path", ""),
+        tables=data.get("tables", {}),
+        total_rows=data.get("total_rows", 0),
+        db_size=data.get("db_size", "?"),
+    )
+    return {"id": bid}
+
+
+@app.get("/api/baselines")
+async def api_baselines():
+    """List all baselines."""
+    return store.list_baselines()
+
+
 @app.get("/api/analytics")
 async def api_analytics(minutes: int = Query(60)):
     """DuckDB-powered analytics summary over the last N minutes."""

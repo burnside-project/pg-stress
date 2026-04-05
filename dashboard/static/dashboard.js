@@ -305,6 +305,39 @@ document.getElementById('reset-btn').addEventListener('click', async () => {
     refresh();
 });
 
+// ─── Active test run badge ───────────────────────────────────────────
+
+async function loadTestRunBadge() {
+    try {
+        const res = await fetch('/api/test-run');
+        const data = await res.json();
+        const badge = document.getElementById('test-run-badge');
+        const nameEl = document.getElementById('test-run-name');
+        const infoEl = document.getElementById('test-run-info');
+        if (!badge) return;
+        if (data.status === 'running') {
+            badge.style.display = 'block';
+            badge.style.background = '#f0fdf4';
+            badge.style.borderColor = '#bbf7d0';
+            nameEl.textContent = data.name || 'unnamed';
+            nameEl.style.color = '#166534';
+            const baseline = data.db_before ? `${(data.db_before.total_rows || 0).toLocaleString()} rows` : '';
+            infoEl.textContent = `${data.intensity || '?'} | ${baseline}`;
+            infoEl.style.color = '#16a34a';
+        } else {
+            badge.style.display = 'block';
+            badge.style.background = '#f8fafc';
+            badge.style.borderColor = '#e2e8f0';
+            nameEl.textContent = 'No active test';
+            nameEl.style.color = '#94a3b8';
+            infoEl.textContent = 'Start a test from Control Panel';
+            infoEl.style.color = '#94a3b8';
+        }
+    } catch {}
+}
+loadTestRunBadge();
+setInterval(loadTestRunBadge, 15000);
+
 // ─── Cross-portal link ──────────────────────────────────────────────
 
 const cpLink = document.getElementById('link-control-panel');
