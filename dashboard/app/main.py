@@ -204,6 +204,88 @@ async def api_test_runs():
     return store.list_test_runs()
 
 
+@app.get("/api/activity")
+async def api_activity():
+    """Live activity feed from pg_stat_activity — real queries running right now."""
+    activities = []
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT pid, state, wait_event_type, wait_event,
+                       left(query, 120) AS query,
+                       extract(epoch from (now() - query_start))::numeric(10,1) AS duration_s,
+                       usename, application_name
+                FROM pg_stat_activity
+                WHERE datname = current_database()
+                  AND pid != pg_backend_pid()
+                  AND state != 'idle'
+                  AND query NOT LIKE '%pg_stat_activity%'
+                ORDER BY query_start DESC
+                LIMIT 20
+            """)
+            for r in rows:
+                q = r["query"] or ""
+                # Classify the query type.
+                qtype = "OTHER"
+                table = ""
+                if q.upper().startswith("SELECT"):
+                    if "JOIN" in q.upper():
+                        qtype = "JOIN"
+                    elif "EXISTS" in q.upper():
+                        qtype = "EXISTS"
+                    elif "COUNT" in q.upper() or "SUM" in q.upper() or "AVG" in q.upper():
+                        qtype = "AGGREGATION"
+                    elif "LIMIT" in q.upper() and "OFFSET" in q.upper():
+                        qtype = "PAGINATION"
+                    else:
+                        qtype = "SELECT"
+                elif q.upper().startswith("INSERT"):
+                    qtype = "INSERT"
+                elif q.upper().startswith("UPDATE"):
+                    qtype = "UPDATE"
+                elif q.upper().startswith("DELETE"):
+                    qtype = "DELETE"
+                elif q.upper().startswith("ANALYZE"):
+                    qtype = "ANALYZE"
+
+                # Extract table name.
+                for kw in ["FROM ", "INTO ", "UPDATE ", "JOIN "]:
+                    idx = q.upper().find(kw)
+                    if idx >= 0:
+                        rest = q[idx + len(kw):].strip()
+                        table = rest.split()[0].strip(",();") if rest else ""
+                        break
+
+                activities.append({
+                    "pid": r["pid"],
+                    "state": r["state"],
+                    "type": qtype,
+                    "table": table.replace('"', '').replace("public.", ""),
+                    "query": q,
+                    "duration_s": float(r["duration_s"]) if r["duration_s"] else 0,
+                    "wait": r["wait_event"] if r["wait_event_type"] else None,
+                    "app": r["application_name"] or "",
+                })
+    except Exception as e:
+        return {"error": str(e), "activities": []}
+
+    # Also get ORM ops delta.
+    orm_ops = None
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get("http://load-generator-orm:9091/healthz")
+            if resp.status_code == 200:
+                orm_ops = resp.json().get("ops", {})
+    except Exception:
+        pass
+
+    return {
+        "activities": activities,
+        "active_count": len(activities),
+        "orm_ops": orm_ops,
+    }
+
+
 @app.post("/api/baseline")
 async def api_save_baseline(data: dict = {}):
     """Save a baseline snapshot."""

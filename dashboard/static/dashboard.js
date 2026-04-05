@@ -305,6 +305,54 @@ document.getElementById('reset-btn').addEventListener('click', async () => {
     refresh();
 });
 
+// ─── Live activity ticker ────────────────────────────────────────────
+
+let prevOrmOps = null;
+
+async function refreshActivity() {
+    try {
+        const res = await fetch('/api/activity');
+        const data = await res.json();
+        const feed = document.getElementById('activity-feed');
+        const countEl = document.getElementById('activity-count');
+        const opsEl = document.getElementById('activity-ops');
+        if (!feed) return;
+
+        countEl.textContent = `${data.active_count || 0} active queries`;
+
+        // ORM ops/s delta.
+        if (data.orm_ops && prevOrmOps) {
+            let totalDelta = 0;
+            for (const [k, v] of Object.entries(data.orm_ops)) {
+                if (k !== 'errors' && prevOrmOps[k] != null) totalDelta += v - prevOrmOps[k];
+            }
+            const opsPerSec = Math.round(totalDelta / 2); // 2s poll interval
+            opsEl.textContent = `ORM: ${opsPerSec} ops/s | Errors: ${data.orm_ops.errors || 0}`;
+        }
+        prevOrmOps = data.orm_ops;
+
+        if (!data.activities || data.activities.length === 0) {
+            feed.innerHTML = '<div style="color:#94a3b8">No active queries</div>';
+            return;
+        }
+
+        feed.innerHTML = data.activities.map(a => {
+            const dur = a.duration_s < 1 ? `${Math.round(a.duration_s * 1000)}ms` : `${a.duration_s.toFixed(1)}s`;
+            const durColor = a.duration_s > 5 ? '#dc2626' : a.duration_s > 1 ? '#f59e0b' : '#16a34a';
+            const q = a.query.length > 80 ? a.query.slice(0, 80) + '...' : a.query;
+            const wait = a.wait ? ` <span style="color:#f59e0b;font-size:9px">⏳${a.wait}</span>` : '';
+            return `<div class="activity-row">
+                <span class="activity-type type-${a.type}">${a.type}</span>
+                <span style="color:#1e293b;min-width:90px">${a.table}</span>
+                <span style="color:#64748b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.query.replace(/"/g, '&quot;')}">${q}</span>
+                <span style="color:${durColor};min-width:50px;text-align:right">${dur}</span>${wait}
+            </div>`;
+        }).join('');
+    } catch {}
+}
+refreshActivity();
+setInterval(refreshActivity, 2000);
+
 // ─── Active test run badge ───────────────────────────────────────────
 
 async function loadTestRunBadge() {
@@ -328,10 +376,12 @@ async function loadTestRunBadge() {
             badge.style.display = 'block';
             badge.style.background = '#f8fafc';
             badge.style.borderColor = '#e2e8f0';
+            badge.style.cursor = 'pointer';
+            badge.onclick = () => window.open(`${location.protocol}//${location.hostname}:3100`, '_blank');
             nameEl.textContent = 'No active test';
             nameEl.style.color = '#94a3b8';
-            infoEl.textContent = 'Start a test from Control Panel';
-            infoEl.style.color = '#94a3b8';
+            infoEl.innerHTML = '<u>Start a test from Control Panel →</u>';
+            infoEl.style.color = '#2563eb';
         }
     } catch {}
 }

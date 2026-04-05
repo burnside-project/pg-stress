@@ -137,6 +137,13 @@ Once the stack is running, use these tools to see what's happening:
 Both portals have a left sidebar with a **Navigate** section to switch between them,
 plus a **Documentation** link to the GitHub repository.
 
+### Live Activity Ticker
+
+Both portals show a **real-time activity ticker** at the top — actual queries from
+`pg_stat_activity` updated every 2 seconds. Each query is color-coded by type
+(SELECT, INSERT, JOIN, EXISTS, AGGREGATION) with table name and duration.
+Slow queries (>1s) show in yellow, very slow (>5s) in red.
+
 ### From the command line
 
 ```bash

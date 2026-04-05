@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Burnside Project — Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=7">
+    <link rel="stylesheet" href="/static/style.css?v=8">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
@@ -103,6 +103,35 @@
                 <button id="reset-btn">Reset</button>
             </div>
         </header>
+
+        <!-- Live Activity Ticker -->
+        <div class="tables-panel" id="activity-ticker" style="margin-bottom:16px">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px">
+                <div style="width:8px; height:8px; border-radius:50%; background:#dc2626; animation:pulse 1.5s infinite"></div>
+                <h3 style="margin:0; font-size:14px">Live Activity</h3>
+                <span id="activity-count" style="font-size:10px; color:#94a3b8; margin-left:auto">0 active queries</span>
+                <span id="activity-ops" style="font-size:10px; color:#64748b"></span>
+            </div>
+            <div id="activity-feed" style="max-height:220px; overflow:auto; font-family:'SF Mono',Menlo,monospace; font-size:11px; line-height:1.8">
+                <div style="color:#94a3b8">Connecting...</div>
+            </div>
+        </div>
+
+        <style>
+            @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.3 } }
+            .activity-row { display:flex; gap:8px; padding:2px 0; border-bottom:1px solid #f1f5f9; align-items:center }
+            .activity-type { font-weight:600; font-size:10px; padding:1px 6px; border-radius:3px; min-width:70px; text-align:center }
+            .type-SELECT { background:#eff6ff; color:#2563eb }
+            .type-INSERT { background:#f0fdf4; color:#16a34a }
+            .type-UPDATE { background:#fef3c7; color:#92400e }
+            .type-DELETE { background:#fee2e2; color:#dc2626 }
+            .type-JOIN { background:#f5f3ff; color:#7c3aed }
+            .type-EXISTS { background:#f5f3ff; color:#7c3aed }
+            .type-AGGREGATION { background:#ecfdf5; color:#059669 }
+            .type-PAGINATION { background:#eff6ff; color:#2563eb }
+            .type-ANALYZE { background:#f8fafc; color:#64748b }
+            .type-OTHER { background:#f8fafc; color:#64748b }
+        </style>
 
         <div class="cards" id="cards">
             <div class="card">
@@ -225,6 +254,6 @@
 
     </div>
 
-    <script src="/static/dashboard.js?v=7"></script>
+    <script src="/static/dashboard.js?v=8"></script>
 </body>
 </html>

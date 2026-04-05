@@ -6,6 +6,10 @@ const API = typeof window !== "undefined"
   ? `${window.location.protocol}//${window.location.hostname}:8100`
   : "http://localhost:8100"
 
+const DASH_API = typeof window !== "undefined"
+  ? `${window.location.protocol}//${window.location.hostname}:8200`
+  : "http://localhost:8200"
+
 // ── Light-mode Burnside Project styles ─────────────────────────────────
 
 const s = {
@@ -137,6 +141,8 @@ export default function Home() {
   const [flushResult, setFlushResult] = useState(null)
   const [activeTest, setActiveTest] = useState(null)
   const [testHistory, setTestHistory] = useState([])
+  const [activity, setActivity] = useState({ activities: [], active_count: 0, orm_ops: null })
+  const prevOrmOps = useState(null)
   const [newTestName, setNewTestName] = useState("")
   const [newTestIntensity, setNewTestIntensity] = useState("medium")
   const [newTestDump, setNewTestDump] = useState("")
@@ -190,6 +196,18 @@ export default function Home() {
     fetch(`${ORM_API}/schema`).then(r => r.json()).then(setOrmSchema).catch(() => {})
     api("/tests/active").then(setActiveTest).catch(() => {})
     api("/tests").then(setTestHistory).catch(() => {})
+  }, [])
+  // Activity ticker — poll every 2s.
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const r = await fetch(`${DASH_API}/api/activity`)
+        setActivity(await r.json())
+      } catch {}
+    }
+    poll()
+    const i = setInterval(poll, 2000)
+    return () => clearInterval(i)
   }, [])
 
   const currentIntensity = config?.intensity?.current || "medium"
@@ -438,6 +456,41 @@ export default function Home() {
         </div>
 
         {/* ═══ SECTION: Database Target & Intensity ═══════════════════ */}
+        {/* ═══ Live Activity Ticker ═════════════════════════════════ */}
+        <div style={{ ...s.card("#dc2626"), marginBottom: 16, borderLeft: "3px solid #dc2626" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#dc2626", animation: "pulse 1.5s infinite" }} />
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>Live Activity</span>
+            <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto" }}>{activity.active_count || 0} active queries</span>
+            {activity.orm_ops && (
+              <span style={{ fontSize: 10, color: "#64748b" }}>
+                Errors: {activity.orm_ops.errors || 0}
+              </span>
+            )}
+          </div>
+          <style>{`@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.3 } }`}</style>
+          <div style={{ maxHeight: 200, overflow: "auto", fontFamily: "'SF Mono',Menlo,monospace", fontSize: 11, lineHeight: 1.8 }}>
+            {activity.activities?.length > 0 ? activity.activities.map((a, i) => {
+              const dur = a.duration_s < 1 ? `${Math.round(a.duration_s * 1000)}ms` : `${a.duration_s.toFixed(1)}s`
+              const durColor = a.duration_s > 5 ? "#dc2626" : a.duration_s > 1 ? "#f59e0b" : "#16a34a"
+              const typeColors = { SELECT: "#2563eb", INSERT: "#16a34a", UPDATE: "#92400e", DELETE: "#dc2626", JOIN: "#7c3aed", EXISTS: "#7c3aed", AGGREGATION: "#059669", PAGINATION: "#2563eb", ANALYZE: "#64748b", OTHER: "#64748b" }
+              const typeBg = { SELECT: "#eff6ff", INSERT: "#f0fdf4", UPDATE: "#fef3c7", DELETE: "#fee2e2", JOIN: "#f5f3ff", EXISTS: "#f5f3ff", AGGREGATION: "#ecfdf5", PAGINATION: "#eff6ff", ANALYZE: "#f8fafc", OTHER: "#f8fafc" }
+              const q = a.query?.length > 70 ? a.query.slice(0, 70) + "..." : a.query
+              return (
+                <div key={i} style={{ display: "flex", gap: 8, padding: "2px 0", borderBottom: "1px solid #f1f5f9", alignItems: "center" }}>
+                  <span style={{ fontWeight: 600, fontSize: 10, padding: "1px 6px", borderRadius: 3, minWidth: 70, textAlign: "center", background: typeBg[a.type] || "#f8fafc", color: typeColors[a.type] || "#64748b" }}>{a.type}</span>
+                  <span style={{ color: "#1e293b", minWidth: 90 }}>{a.table}</span>
+                  <span style={{ color: "#64748b", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.query}>{q}</span>
+                  <span style={{ color: durColor, minWidth: 50, textAlign: "right" }}>{dur}</span>
+                  {a.wait && <span style={{ color: "#f59e0b", fontSize: 9 }}>⏳{a.wait}</span>}
+                </div>
+              )
+            }) : (
+              <div style={{ color: "#94a3b8" }}>No active queries</div>
+            )}
+          </div>
+        </div>
+
         <div id="section-target" style={s.section}>
           <div style={s.sectionHead}>
             <span style={s.sectionTitle}>Database Target & Intensity</span>

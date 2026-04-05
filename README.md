@@ -164,8 +164,10 @@ connections, table counts, and active jobs. From here you can:
 
 ### Metrics Dashboard (`:8200`)
 
-Real-time auto-refreshing charts:
+Real-time auto-refreshing charts and live activity feed:
 
+- **Live Activity Ticker** — real queries from `pg_stat_activity`, updated every 2s,
+  color-coded by type (SELECT, INSERT, JOIN, EXISTS, AGGREGATION), with duration and table name
 - **TPS** — transactions per second over time
 - **Cache hit ratio** — shared buffer effectiveness
 - **Active connections** — current vs max
