@@ -73,15 +73,15 @@ manifests supporting `linux/amd64` and `linux/arm64`.
 ### Pull by version
 
 ```bash
-docker pull ghcr.io/dataalgebra-engineering/pg-stress/load-generator:v1.0.0-rc16
-docker pull ghcr.io/dataalgebra-engineering/pg-stress/dashboard:v1.0.0-rc16
+docker pull ghcr.io/burnside-project/pg-stress/load-generator:v1.0.0-rc16
+docker pull ghcr.io/burnside-project/pg-stress/dashboard:v1.0.0-rc16
 ```
 
 ### Pull latest RC
 
 ```bash
 for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
-  docker pull ghcr.io/dataalgebra-engineering/pg-stress/${svc}:rc-latest
+  docker pull ghcr.io/burnside-project/pg-stress/${svc}:rc-latest
 done
 ```
 
@@ -89,7 +89,7 @@ done
 
 ```bash
 for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
-  docker pull ghcr.io/dataalgebra-engineering/pg-stress/${svc}:latest
+  docker pull ghcr.io/burnside-project/pg-stress/${svc}:latest
 done
 ```
 
@@ -119,7 +119,7 @@ Once an RC is validated in staging:
 
 ```bash
 gh workflow run release.yml \
-  --repo dataalgebra-engineering/pg-stress \
+  --repo burnside-project/pg-stress \
   -f version=v1.0.0
 ```
 

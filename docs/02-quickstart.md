@@ -17,7 +17,7 @@ to GitHub Container Registry. New images are built automatically on every push t
 ```bash
 # Pull latest release candidate
 for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
-  docker pull ghcr.io/dataalgebra-engineering/pg-stress/${svc}:rc-latest
+  docker pull ghcr.io/burnside-project/pg-stress/${svc}:rc-latest
 done
 ```
 
@@ -44,7 +44,7 @@ pg_dump -h prod-host -U prod_user -d my_production_db > production.sql
 ### 2. Clone and configure
 
 ```bash
-git clone https://github.com/dataalgebra-engineering/pg-stress.git
+git clone https://github.com/burnside-project/pg-stress.git
 cd pg-stress
 cp .env.example .env
 ```
@@ -81,7 +81,7 @@ docker compose exec postgres psql -U postgres -d my_production_db \
 ## Path B: No Production Data
 
 ```bash
-git clone https://github.com/dataalgebra-engineering/pg-stress.git
+git clone https://github.com/burnside-project/pg-stress.git
 cd pg-stress
 make up                  # Seeds 18-table e-commerce schema (~30M rows)
 ```

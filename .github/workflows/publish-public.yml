@@ -73,7 +73,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| | |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Source** | dataalgebra-engineering/pg-stress |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Source** | burnside-project/pg-stress |" >> $GITHUB_STEP_SUMMARY
           echo "| **Target** | burnside-project/pg-stress |" >> $GITHUB_STEP_SUMMARY
           echo "| **Branch** | ${{ inputs.branch }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Commit** | \`$(git rev-parse --short HEAD)\` |" >> $GITHUB_STEP_SUMMARY

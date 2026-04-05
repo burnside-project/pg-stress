@@ -8,8 +8,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dataalgebra-engineering/pg-stress/actions/workflows/ci-cd.yml"><img src="https://github.com/dataalgebra-engineering/pg-stress/actions/workflows/ci-cd.yml/badge.svg" alt="CI/CD"></a>
-  <a href="https://github.com/dataalgebra-engineering/pg-stress/releases/latest"><img src="https://img.shields.io/github/v/release/dataalgebra-engineering/pg-stress?include_prereleases&label=release" alt="Release"></a>
+  <a href="https://github.com/burnside-project/pg-stress/actions/workflows/ci-cd.yml"><img src="https://github.com/burnside-project/pg-stress/actions/workflows/ci-cd.yml/badge.svg" alt="CI/CD"></a>
+  <a href="https://github.com/burnside-project/pg-stress/releases/latest"><img src="https://img.shields.io/github/v/release/burnside-project/pg-stress?include_prereleases&label=release" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
   <a href="https://claude.ai"><img src="https://img.shields.io/badge/AI%20Powered-Claude%20Code-blueviolet" alt="AI Powered"></a>
 </p>
@@ -123,17 +123,17 @@ and publishes them to GHCR with an auto-incremented release candidate tag.
 ```bash
 # Pull latest RC images
 for svc in load-generator load-generator-orm pgbench-runner dashboard truth-service; do
-  docker pull ghcr.io/dataalgebra-engineering/pg-stress/${svc}:rc-latest
+  docker pull ghcr.io/burnside-project/pg-stress/${svc}:rc-latest
 done
 ```
 
 Or pin to a specific version:
 
 ```bash
-docker pull ghcr.io/dataalgebra-engineering/pg-stress/load-generator:v1.0.0-rc16
+docker pull ghcr.io/burnside-project/pg-stress/load-generator:v1.0.0-rc16
 ```
 
-See [Releases](https://github.com/dataalgebra-engineering/pg-stress/releases) for all versions and changelogs.
+See [Releases](https://github.com/burnside-project/pg-stress/releases) for all versions and changelogs.
 
 ## Quickstart
 
@@ -151,7 +151,7 @@ pg_dump -Fc -h prod-host -U prod_user my_production_db > production.dump
 **Step 2 — Clone and configure:**
 
 ```console
-$ git clone https://github.com/dataalgebra-engineering/pg-stress.git
+$ git clone https://github.com/burnside-project/pg-stress.git
 $ cd pg-stress && cp .env.example .env
 ```
 
@@ -175,7 +175,7 @@ and starts generating load automatically.
 ### Path B: I don't have production data
 
 ```console
-$ git clone https://github.com/dataalgebra-engineering/pg-stress.git
+$ git clone https://github.com/burnside-project/pg-stress.git
 $ cd pg-stress
 $ make up                        # Seeds 18-table e-commerce schema (~30M rows)
 ```
@@ -540,7 +540,7 @@ curl http://<host>:8100/tests/active              # Get active test
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/dataalgebra-engineering/pg-stress.git
+git clone https://github.com/burnside-project/pg-stress.git
 cd pg-stress && cp .env.example .env
 
 # 2. Edit .env
@@ -583,7 +583,7 @@ make down                           # Stop and remove volumes
 ### Quick validation (no production data)
 
 ```bash
-git clone https://github.com/dataalgebra-engineering/pg-stress.git
+git clone https://github.com/burnside-project/pg-stress.git
 cd pg-stress
 make up                             # Seeds 18-table e-commerce (~30M rows)
 # Wait ~10 min for seeding, then:
