@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Burnside Project — Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=4">
+    <link rel="stylesheet" href="/static/style.css?v=5">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
@@ -43,17 +43,18 @@
             <div>Load Generator<div class="sidebar-tip">Operation counts and errors</div></div>
         </a>
 
-        <div class="sidebar-nav-section">Services</div>
-        <div id="sidebar-services"></div>
-
-        <div class="sidebar-nav-section">Navigate</div>
+        <div class="sidebar-nav-section">Burnside Project</div>
         <a id="link-control-panel" class="sidebar-nav-item" target="_blank" title="Switch to Control Panel for intensity, inject, WHAT IF, AI analysis">
             <div class="sidebar-dot" style="background:#8b5cf6"></div>
-            <div>Control Panel<div class="sidebar-tip">Intensity, inject, AI analysis</div></div>
+            <div>Control Panel<div class="sidebar-tip">Orchestration, inject, AI analysis</div></div>
+        </a>
+        <a href="https://github.com/burnside-project/pg-collector" class="sidebar-nav-item" target="_blank" title="pg-collector — production telemetry agent">
+            <div class="sidebar-dot" style="background:#10b981"></div>
+            <div>pg-collector<div class="sidebar-tip">Production telemetry agent</div></div>
         </a>
         <a href="https://github.com/burnside-project/pg-stress" class="sidebar-nav-item" target="_blank" title="pg-stress documentation on GitHub">
             <div class="sidebar-dot" style="background:#64748b"></div>
-            <div>Documentation<div class="sidebar-tip">GitHub repository and docs</div></div>
+            <div>Documentation<div class="sidebar-tip">GitHub docs and runbook</div></div>
         </a>
 
         <div class="sidebar-footer">
@@ -63,6 +64,13 @@
 
     <!-- Main Content -->
     <div class="main-content">
+
+        <div style="display:flex; align-items:center; margin-bottom:16px">
+            <div>
+                <div style="font-size:18px; font-weight:700; color:#1e293b">Metrics Dashboard</div>
+                <div style="font-size:12px; color:#94a3b8">Real-time PostgreSQL metrics — TPS, cache ratio, connections, table growth</div>
+            </div>
+        </div>
 
         <header>
             <div style="display:flex; align-items:center; gap:16px">
@@ -197,6 +205,6 @@
 
     </div>
 
-    <script src="/static/dashboard.js?v=4"></script>
+    <script src="/static/dashboard.js?v=5"></script>
 </body>
 </html>

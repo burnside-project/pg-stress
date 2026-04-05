@@ -208,25 +208,19 @@ export default function Home() {
           )
         )}
 
-        {/* Services */}
-        <div style={s.navSection}>Services</div>
-        {Object.entries(svcs).map(([k, v]) => (
-          <div key={k} style={{ ...s.navItem(false), fontSize: 12 }} title={`${k}: ${v.status}${v.health ? ` (${v.health})` : ''}`}>
-            <div style={s.navDot(v.status === "running" ? "#16a34a" : v.status === "not_found" ? "#e2e8f0" : "#dc2626")} />
-            <div style={{ flex: 1 }}>{k}</div>
-            <span style={{ fontSize: 9, color: v.status === "running" ? "#16a34a" : "#94a3b8" }}>{v.status === "running" ? "up" : v.status === "not_found" ? "off" : v.status}</span>
-          </div>
-        ))}
-
-        {/* Navigate */}
-        <div style={s.navSection}>Navigate</div>
+        {/* Burnside Project */}
+        <div style={s.navSection}>Burnside Project</div>
         <a href={typeof window !== "undefined" ? `${window.location.protocol}//${window.location.hostname}:8200` : "#"} target="_blank" style={{ ...s.navItem(false), textDecoration: "none" }}>
           <div style={s.navDot("#3b82f6")} />
-          Metrics Dashboard
+          <div>Metrics Dashboard<div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 400 }}>Real-time charts and table stats</div></div>
+        </a>
+        <a href="https://github.com/burnside-project/pg-collector" target="_blank" style={{ ...s.navItem(false), textDecoration: "none" }}>
+          <div style={s.navDot("#10b981")} />
+          <div>pg-collector<div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 400 }}>Production telemetry agent</div></div>
         </a>
         <a href="https://github.com/burnside-project/pg-stress" target="_blank" style={{ ...s.navItem(false), textDecoration: "none" }}>
           <div style={s.navDot("#64748b")} />
-          Documentation
+          <div>Documentation<div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 400 }}>GitHub docs and runbook</div></div>
         </a>
 
         <div style={s.sidebarFooter}>
@@ -236,6 +230,20 @@ export default function Home() {
 
       {/* ═══ Main Content ══════════════════════════════════════════════ */}
       <main style={s.main}>
+
+        {/* Console Header */}
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#1e293b" }}>Control Panel</div>
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>Stress test orchestration — intensity, WHAT IF scenarios, AI analysis</div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {Object.entries(svcs).filter(([,v]) => v.status === "running").map(([k]) => (
+              <span key={k} style={s.badge("#16a34a")}>{k}</span>
+            ))}
+          </div>
+        </div>
 
         {/* Stats Bar */}
         <div style={s.topBar}>

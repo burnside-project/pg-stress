@@ -124,3 +124,17 @@ See [Control Plane — AI Analysis](04-control-plane.md#ai-analysis) for details
 
 Reports are stored as JSON + Markdown files in the `control-plane-reports` Docker volume.
 Access via API (`GET /reports`), Control Panel UI (Reports section), or mount the volume locally.
+
+### Data Storage
+
+| Data | Storage | Volume | Persists across restarts? |
+|------|---------|--------|---------------------------|
+| Dashboard metrics | SQLite | `dashboard-data` (`/data/metrics.db`) | Yes |
+| AI analysis reports | JSON + Markdown files | `control-plane-reports` (`/app/reports/`) | Yes |
+| Ladder results | JSON files | `control-plane-reports` (`/app/reports/`) | Yes |
+| PostgreSQL data | PostgreSQL files | `stress-pg-data` | Yes |
+| pgbench results | Text files | `pgbench-results` | Yes |
+
+Dashboard metrics are stored in SQLite so they survive container restarts.
+Use `make down` to remove all volumes including stored data.
+Use `make stop` to stop services but keep all data intact.

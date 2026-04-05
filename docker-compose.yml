@@ -172,6 +172,7 @@ services:
       STRESS_LIMIT_REVIEWS: "${STRESS_LIMIT_REVIEWS:-5000000}"
     volumes:
       - ./scenarios/${SCENARIO:-default}.yaml:/etc/stress/scenario.yaml:ro
+      - dashboard-data:/data
     ports:
       - "${DASHBOARD_PORT:-8200}:8000"
     networks:
@@ -445,3 +446,4 @@ volumes:
   collector-output:
   pgbench-results:
   control-plane-reports:
+  dashboard-data:
