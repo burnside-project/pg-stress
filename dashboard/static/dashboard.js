@@ -310,6 +310,31 @@ document.getElementById('reset-btn').addEventListener('click', async () => {
 const cpLink = document.getElementById('link-control-panel');
 if (cpLink) cpLink.href = `${location.protocol}//${location.hostname}:3100`;
 
+// ─── Sidebar services (populated from control plane) ────────────────
+
+async function updateSidebarServices() {
+    try {
+        const res = await fetch(`${location.protocol}//${location.hostname}:8100/status`);
+        const data = await res.json();
+        const container = document.getElementById('sidebar-services');
+        if (!container || !data.services) return;
+        container.innerHTML = '';
+        for (const [name, info] of Object.entries(data.services)) {
+            const running = info.status === 'running';
+            const dot = running ? '#16a34a' : info.status === 'not_found' ? '#e2e8f0' : '#dc2626';
+            const label = running ? 'up' : info.status === 'not_found' ? 'off' : info.status;
+            container.innerHTML += `
+                <div class="sidebar-nav-item" style="font-size:12px" title="${name}: ${info.status}">
+                    <div class="sidebar-dot" style="background:${dot}"></div>
+                    <div style="flex:1">${name}</div>
+                    <span style="font-size:9px;color:${running ? '#16a34a' : '#94a3b8'}">${label}</span>
+                </div>`;
+        }
+    } catch {}
+}
+updateSidebarServices();
+setInterval(updateSidebarServices, 15000);
+
 // ─── Auto-refresh ────────────────────────────────────────────────────
 
 refresh();

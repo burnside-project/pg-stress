@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Burnside Project — Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=3">
+    <link rel="stylesheet" href="/static/style.css?v=4">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
@@ -16,41 +16,44 @@
         <div class="sidebar-sub">pg-stress</div>
 
         <div class="sidebar-nav-section">Metrics</div>
-        <a href="#cards" class="sidebar-nav-item active">
+        <a href="#cards" class="sidebar-nav-item active" title="Connections, TPS, cache ratio, locks, database size">
             <div class="sidebar-dot" style="background:#2563eb"></div>
-            Overview
+            <div>Overview<div class="sidebar-tip">KPI cards and real-time stats</div></div>
         </a>
-        <a href="#chart-txn" class="sidebar-nav-item">
+        <a href="#chart-txn" class="sidebar-nav-item" title="Transactions per second and tuple operations over time">
             <div class="sidebar-dot" style="background:#16a34a"></div>
-            Transactions
+            <div>Transactions<div class="sidebar-tip">TPS and tuple ops charts</div></div>
         </a>
-        <a href="#chart-conns" class="sidebar-nav-item">
+        <a href="#chart-conns" class="sidebar-nav-item" title="Active, idle, and idle-in-transaction connections over time">
             <div class="sidebar-dot" style="background:#f59e0b"></div>
-            Connections
+            <div>Connections<div class="sidebar-tip">Connection state breakdown</div></div>
         </a>
-        <a href="#chart-cache" class="sidebar-nav-item">
+        <a href="#chart-cache" class="sidebar-nav-item" title="Shared buffer cache hit ratio — below 99% means buffers too small">
             <div class="sidebar-dot" style="background:#8b5cf6"></div>
-            Cache Ratio
+            <div>Cache Ratio<div class="sidebar-tip">Buffer hit effectiveness</div></div>
         </a>
 
         <div class="sidebar-nav-section">Data</div>
-        <a href="#tables-table" class="sidebar-nav-item">
+        <a href="#tables-table" class="sidebar-nav-item" title="Row counts with live deltas, dead tuples, sizes, safety limits">
             <div class="sidebar-dot" style="background:#f59e0b"></div>
-            Table Sizes
+            <div>Table Sizes<div class="sidebar-tip">Live growth tracking and limits</div></div>
         </a>
-        <a href="#loadgen-panel" class="sidebar-nav-item">
+        <a href="#loadgen-panel" class="sidebar-nav-item" title="Raw SQL generator operation counts, errors, burst stats">
             <div class="sidebar-dot" style="background:#3b82f6"></div>
-            Load Generator
+            <div>Load Generator<div class="sidebar-tip">Operation counts and errors</div></div>
         </a>
 
+        <div class="sidebar-nav-section">Services</div>
+        <div id="sidebar-services"></div>
+
         <div class="sidebar-nav-section">Navigate</div>
-        <a id="link-control-panel" class="sidebar-nav-item" target="_blank">
+        <a id="link-control-panel" class="sidebar-nav-item" target="_blank" title="Switch to Control Panel for intensity, inject, WHAT IF, AI analysis">
             <div class="sidebar-dot" style="background:#8b5cf6"></div>
-            Control Panel
+            <div>Control Panel<div class="sidebar-tip">Intensity, inject, AI analysis</div></div>
         </a>
-        <a href="https://github.com/dataalgebra-engineering/pg-stress" class="sidebar-nav-item" target="_blank">
+        <a href="https://github.com/dataalgebra-engineering/pg-stress" class="sidebar-nav-item" target="_blank" title="pg-stress documentation on GitHub">
             <div class="sidebar-dot" style="background:#64748b"></div>
-            Documentation
+            <div>Documentation<div class="sidebar-tip">GitHub repository and docs</div></div>
         </a>
 
         <div class="sidebar-footer">
@@ -194,6 +197,6 @@
 
     </div>
 
-    <script src="/static/dashboard.js?v=3"></script>
+    <script src="/static/dashboard.js?v=4"></script>
 </body>
 </html>

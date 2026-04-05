@@ -115,3 +115,12 @@ docker compose up -d control-plane
 
 Three ways to run: `make analyze` (CLI), Control Panel UI at `:3100`, or `POST /analyze` (API).
 See [Control Plane — AI Analysis](04-control-plane.md#ai-analysis) for details.
+
+### Reports
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REPORTS_DIR` | `/app/reports` | Where AI analysis and ladder reports are saved (inside container) |
+
+Reports are stored as JSON + Markdown files in the `control-plane-reports` Docker volume.
+Access via API (`GET /reports`), Control Panel UI (Reports section), or mount the volume locally.

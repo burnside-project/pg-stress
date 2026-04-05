@@ -110,14 +110,14 @@ function fmt(n) { return n != null ? Number(n).toLocaleString() : "—" }
 
 const NAV = [
   { section: "Stress Test" },
-  { id: "target", label: "Database Target", dot: "#8b5cf6" },
-  { id: "operations", label: "Data Operations", dot: "#f59e0b" },
-  { id: "connections", label: "Connections", dot: "#3b82f6" },
+  { id: "target", label: "Database Target", dot: "#8b5cf6", tip: "Configure PG host, credentials, intensity, import dumps" },
+  { id: "operations", label: "Data Operations", dot: "#f59e0b", tip: "Inject rows, bulk update, simulate table growth" },
+  { id: "connections", label: "Connections", dot: "#3b82f6", tip: "Connection pressure, growth ladder, load generators" },
   { section: "Introspection" },
-  { id: "schema", label: "Schema & ORM", dot: "#8b5cf6" },
+  { id: "schema", label: "Schema & ORM", dot: "#8b5cf6", tip: "Auto-discovered tables, FK chains, SQLAlchemy classes" },
   { section: "Analysis" },
-  { id: "analysis", label: "AI Analyzer", dot: "#10b981" },
-  { id: "jobs", label: "Jobs & Reports", dot: "#10b981" },
+  { id: "analysis", label: "AI Analyzer", dot: "#10b981", tip: "Send diagnostics to Claude for tuning advice" },
+  { id: "reports", label: "Reports", dot: "#10b981", tip: "Saved AI analysis and ladder results" },
 ]
 
 // ── Page ────────────────────────────────────────────────────────────────
@@ -128,6 +128,7 @@ export default function Home() {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState({})
   const [report, setReport] = useState(null)
+  const [reportsList, setReportsList] = useState([])
   const [activeNav, setActiveNav] = useState("target")
 
   const [f, setF] = useState({
@@ -197,19 +198,23 @@ export default function Home() {
           item.section ? (
             <div key={i} style={s.navSection}>{item.section}</div>
           ) : (
-            <div key={item.id} style={s.navItem(activeNav === item.id)} onClick={() => scrollTo(item.id)}>
+            <div key={item.id} style={s.navItem(activeNav === item.id)} onClick={() => scrollTo(item.id)} title={item.tip}>
               <div style={s.navDot(item.dot)} />
-              {item.label}
+              <div>
+                <div>{item.label}</div>
+                {item.tip && <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 400, lineHeight: 1.2, marginTop: 1 }}>{item.tip}</div>}
+              </div>
             </div>
           )
         )}
 
         {/* Services */}
         <div style={s.navSection}>Services</div>
-        {Object.entries(svcs).filter(([,v]) => v.status === "running").map(([k]) => (
-          <div key={k} style={{ ...s.navItem(false), fontSize: 12 }}>
-            <div style={s.navDot("#16a34a")} />
-            {k}
+        {Object.entries(svcs).map(([k, v]) => (
+          <div key={k} style={{ ...s.navItem(false), fontSize: 12 }} title={`${k}: ${v.status}${v.health ? ` (${v.health})` : ''}`}>
+            <div style={s.navDot(v.status === "running" ? "#16a34a" : v.status === "not_found" ? "#e2e8f0" : "#dc2626")} />
+            <div style={{ flex: 1 }}>{k}</div>
+            <span style={{ fontSize: 9, color: v.status === "running" ? "#16a34a" : "#94a3b8" }}>{v.status === "running" ? "up" : v.status === "not_found" ? "off" : v.status}</span>
           </div>
         ))}
 
@@ -619,18 +624,71 @@ export default function Home() {
               )}
             </div>
 
+          </div>
+        </div>
+
+        {/* ═══ SECTION: Reports ══════════════════════════════════════ */}
+        <div id="section-reports" style={s.section}>
+          <div style={s.sectionHead}>
+            <span style={s.sectionTitle}>Reports</span>
+            <span style={s.sectionSub}>— Saved AI analysis, ladder results, downloadable reports</span>
+          </div>
+          <div style={s.grid}>
             <div style={s.card("#10b981")}>
               <div style={s.cardTitle}>Saved Reports</div>
-              <div style={s.cardDesc}>Ladder results and AI analysis reports.</div>
-              <button style={{ ...s.btn, ...s.btnGhost, ...s.btnFull }}
-                onClick={async () => { try { const r = await api("/reports"); setReport(r) } catch {} }}>
-                List Reports
+              <div style={s.cardDesc}>Reports are saved to the server at <code style={{ background: "#f1f5f9", padding: "1px 6px", borderRadius: 3, fontSize: 11 }}>REPORTS_DIR</code> (default: <code style={{ background: "#f1f5f9", padding: "1px 6px", borderRadius: 3, fontSize: 11 }}>/app/reports</code>). Configure in .env.</div>
+              <button style={{ ...s.btn, ...s.btnGhost, ...s.btnFull, marginBottom: 12 }}
+                onClick={async () => { try { setReportsList(await api("/reports")) } catch {} }}>
+                Refresh Reports
               </button>
+              {reportsList.length > 0 ? (
+                <div style={{ maxHeight: 300, overflow: "auto" }}>
+                  <table style={s.table}>
+                    <thead><tr><th style={s.th}>Type</th><th style={s.th}>Focus</th><th style={s.th}>Created</th><th style={s.th}>Links</th></tr></thead>
+                    <tbody>
+                      {reportsList.map(r => (
+                        <tr key={r.id}>
+                          <td style={s.td}>{r.type}</td>
+                          <td style={s.td}>{r.focus || "full"}</td>
+                          <td style={{ ...s.td, fontSize: 11, color: "#64748b" }}>{r.created_at?.split("T")[0]} {r.created_at?.split("T")[1]?.split(".")[0]}</td>
+                          <td style={s.td}>
+                            <a href={`${API}/reports/${r.file}`} target="_blank" style={{ color: "#2563eb", fontSize: 11, marginRight: 8 }}>JSON</a>
+                            <a href={`${API}/reports/${r.file.replace(".json", ".md")}`} target="_blank" style={{ color: "#2563eb", fontSize: 11 }}>Markdown</a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p style={{ fontSize: 12, color: "#94a3b8" }}>No reports yet. Run AI analysis or a growth ladder to generate one.</p>
+              )}
+            </div>
+
+            <div style={s.card("#10b981")}>
+              <div style={s.cardTitle}>Report Viewer</div>
+              <div style={s.cardDesc}>Click a report to view inline, or use the links to download.</div>
+              {reportsList.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {reportsList.slice(0, 5).map(r => (
+                    <button key={r.id} style={{ ...s.btn, ...s.btnGhost, textAlign: "left", fontSize: 12 }}
+                      onClick={async () => { try { setReport(await api(`/reports/${r.file}`)) } catch {} }}>
+                      {r.type} — {r.focus || "full"} ({r.created_at?.split("T")[0]})
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!reportsList.length && (
+                <button style={{ ...s.btn, ...s.btnGhost, ...s.btnFull }}
+                  onClick={async () => { try { setReport(await api("/analyze/latest")) } catch { setReport({ error: "No reports yet" }) } }}>
+                  View Latest Analysis
+                </button>
+              )}
             </div>
           </div>
 
           {report && (
-            <div style={{ ...s.card("#10b981"), marginTop: 16, gridColumn: "1 / -1" }}>
+            <div style={{ ...s.card("#10b981"), marginTop: 16 }}>
               <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
                 <div style={s.cardTitle}>Report</div>
                 <div style={{ flex: 1 }} />
