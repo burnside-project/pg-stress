@@ -73,8 +73,8 @@ manifests supporting `linux/amd64` and `linux/arm64`.
 ### Pull by version
 
 ```bash
-docker pull ghcr.io/dataalgebra-engineering/pg-stress/load-generator:v1.0.0-rc12
-docker pull ghcr.io/dataalgebra-engineering/pg-stress/dashboard:v1.0.0-rc12
+docker pull ghcr.io/dataalgebra-engineering/pg-stress/load-generator:v1.0.0-rc13
+docker pull ghcr.io/dataalgebra-engineering/pg-stress/dashboard:v1.0.0-rc13
 ```
 
 ### Pull latest RC
