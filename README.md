@@ -95,6 +95,22 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
 
 ---
 
+> ### Metrics Dashboard (`:8200`) — Get AI emabed tuning advise
+> ![Dashboard](assets/ai-analyzer.png)
+>
+> `http://<host>:8200` —  After the test, Claude analyzes the diagnostics and gives tuning advice.
+> 
+> You need Claude AI API Key 
+
+---
+
+> ### Metrics Dashboard (`:8200`) — View Real-time Postgresql Config
+> ![Dashboard](assets/config-loader.png)
+>
+> `http://<host>:8200` — View realtime Postgresql Config Parameters
+> 
+> No need to dig into your config file. Refind the config pram and restart the server to shadow your Production Server!
+
 ## Install
 
 Every push to `main` builds multi-arch Docker images (`linux/amd64` + `linux/arm64`)
