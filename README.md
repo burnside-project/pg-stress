@@ -16,13 +16,41 @@
 
 ## What is pg-stress?
 
-A one-off stress testing platform for **any PostgreSQL database**. No models to write.
-No queries to define. No schema to configure. Point it at your database — pg-stress
-introspects the schema, discovers relationships, classifies tables, and generates
-realistic ORM and SQL load patterns automatically.
+A **100% local, one-off** stress testing platform for any PostgreSQL database.
+No models to write. No queries to define. No schema to configure. No data leaves
+your machine.
 
-After the test, feed the results to Claude for tuning advice, query fixes, and
-capacity predictions.
+Point it at your database — pg-stress introspects the schema, discovers relationships,
+classifies tables, and generates realistic ORM and SQL load patterns automatically.
+After the test, Claude analyzes the diagnostics and gives tuning advice.
+
+### Core Features
+
+- **Named Test Runs** — Start, stop, and compare tests. Every test resets to a known
+  baseline (production dump). Before/after snapshots saved to SQLite.
+- **Live Activity Ticker** — Real queries from `pg_stat_activity` updated every 2s,
+  color-coded by type (SELECT, INSERT, JOIN, EXISTS), with table names and durations.
+- **Schema Introspection** — Auto-discovers tables, FKs, indexes, classifies each table
+  (entity, transactional, append_only, lookup, hierarchical), builds FK chains.
+- **10 ORM Patterns** — N+1, eager load (join/subquery/selectin), bulk insert, pagination,
+  aggregation, EXISTS filter, relationship JOIN — applied to YOUR tables, not templates.
+- **WHAT IF Scenarios** — Inject 5M rows ("What if orders doubles?"), bulk update,
+  connection pressure, growth ladder (find breaking points).
+- **AI Analyzer** — Claude reads 11 PostgreSQL diagnostic datasets and returns actionable
+  tuning advice, query fixes, N+1 detection, capacity predictions.
+- **Fully Local** — SQLite for metrics, DuckDB for analytics, PostgreSQL for stress target.
+  Nothing leaves your network. Designed for one-off tests, not production monitoring.
+
+### pg-stress vs pg-collector
+
+| | pg-stress | pg-collector |
+|---|---|---|
+| **When** | One-off, before a change or event | Always running |
+| **Where** | Disposable test server (Docker) | Production |
+| **Data** | 100% local (SQLite + DuckDB) | Shipped to warehouse |
+| **Purpose** | "What will happen?" | "What is happening?" |
+| **Output** | AI advisory report | Metric time-series |
+| **Duration** | Minutes to hours | Ongoing |
 
 ## How It Works
 
@@ -49,17 +77,21 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
 
 ---
 
-> ### Control Panel (`:3100`) — configure intensity, inject rows, run growth ladders, trigger AI analysis
+> ### Control Panel (`:3100`) — Test runs, live activity, WHAT IF scenarios, AI analysis
 > ![Control Panel](assets/control-panel-full.png)
 >
-> Live: `http://<host>:3100`
+> `http://<host>:3100` — Start/stop named tests, inject rows, run growth ladders,
+> view SQLAlchemy introspection, trigger Claude AI analysis. Live activity ticker
+> shows real queries hitting the database in real-time.
 
 ---
 
-> ### Metrics Dashboard (`:8200`) — real-time TPS, cache ratio, connections, table sizes
+> ### Metrics Dashboard (`:8200`) — Real-time charts, table growth, live queries
 > ![Dashboard](assets/dashboard.png)
 >
-> Live: `http://<host>:8200`
+> `http://<host>:8200` — TPS, cache hit ratio, connections, table sizes with live
+> growth deltas (+N/-N), locks, dead tuples. Live activity ticker shows every query
+> running right now. Test run badge shows active test name and baseline.
 
 ---
 
@@ -325,9 +357,38 @@ Each pattern is a generic template applied to **your** FK chains — not hardcod
 Both portals link to each other via the left sidebar **Navigate** section. The sidebar
 also includes a **Documentation** link to this repository.
 
+## PostgreSQL Configuration
+
+The test container runs PostgreSQL 15 with these settings (configurable via `.env`).
+These do not change during a test — only on container restart.
+
+| Setting | Value | What it controls |
+|---------|-------|-----------------|
+| `shared_buffers` | 256 MB | Shared memory for caching data pages |
+| `work_mem` | 16 MB | Memory per sort/hash operation |
+| `effective_cache_size` | 1 GB | Planner's cache size assumption |
+| `max_connections` | 200 | Maximum concurrent connections |
+| `maintenance_work_mem` | 128 MB | Memory for VACUUM, CREATE INDEX |
+| `wal_buffers` | 16 MB | WAL write buffer |
+| `max_wal_size` | 2 GB | WAL size before checkpoint |
+| `random_page_cost` | 1.1 | Cost estimate for random disk I/O (SSD optimized) |
+| `effective_io_concurrency` | 200 | Async I/O requests (SSD optimized) |
+| `checkpoint_completion_target` | 0.9 | Spread checkpoint writes over interval |
+| `autovacuum_max_workers` | 4 | Parallel autovacuum workers |
+| `autovacuum_naptime` | 30s | Time between autovacuum runs |
+| `shared_preload_libraries` | `pg_stat_statements` | Tracks query statistics |
+| `log_min_duration_statement` | 1000 ms | Log queries slower than 1s |
+
+These are deliberately **modest defaults** so the AI Analyzer has room to recommend
+improvements. The whole point is to stress the database, observe the bottlenecks,
+and get Claude to tell you what to tune.
+
 ## AI Analyzer
 
 After a stress test, send diagnostics to Claude for expert analysis.
+This is like [pg-collector](https://github.com/burnside-project/pg-collector) but
+**100% local** — no data leaves your machine. Designed for one-off tests, not
+production monitoring.
 
 ### Setup
 
@@ -536,23 +597,13 @@ make report-remote DEPLOY_HOST=4
 | [Configuration](docs/05-configuration.md) | All environment variables |
 | [Releases & CI/CD](docs/06-releases.md) | Automated pipeline, versioning, Docker images, promoting RCs |
 
-## pg-stress vs pg-collector
-
-| | pg-stress | pg-collector |
-|---|---|---|
-| **When** | One-off, before a change or event | Always running |
-| **Where** | Disposable test server | Production |
-| **Input** | Any PostgreSQL (auto-discovered) | Live production queries |
-| **Purpose** | "What will happen?" | "What is happening?" |
-| **Output** | LLM advisory report | Metric time-series |
-
-## Relationship to Burnside Project
+## Burnside Project
 
 | Project | Role |
 |---------|------|
+| **pg-stress** | One-off stress test → LLM advisory (this repo) |
 | [pg-collector](https://github.com/burnside-project/pg-collector) | Ongoing production telemetry |
-| [pg-warehouse](https://github.com/burnside-project/pg-warehouse) | Local-first analytical warehouse (PostgreSQL &rarr; DuckDB) |
-| **pg-stress** | One-off stress test &rarr; LLM advisory |
+| [pg-warehouse](https://github.com/burnside-project/pg-warehouse) | Local-first analytical warehouse (PostgreSQL → DuckDB) |
 
 ## License
 

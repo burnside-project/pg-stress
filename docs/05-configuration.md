@@ -42,6 +42,35 @@ on first startup. Set to `false` when:
 - Using BYOD (`make import DUMP=...`) — your dump already has its own schema
 - You only want an empty database to populate yourself
 
+## PostgreSQL Configuration
+
+These settings are applied when the container starts and **do not change during a test**.
+They are intentionally modest so the AI Analyzer has room to recommend improvements.
+
+| Setting | Default | `.env` Variable | What it controls |
+|---------|---------|-----------------|-----------------|
+| `shared_buffers` | 256 MB | `PG_SHARED_BUFFERS` | Shared memory for data page caching |
+| `work_mem` | 16 MB | `PG_WORK_MEM` | Memory per sort/hash/join operation |
+| `effective_cache_size` | 1 GB | `PG_EFFECTIVE_CACHE_SIZE` | Planner's cache size assumption |
+| `max_connections` | 200 | `PG_MAX_CONNECTIONS` | Maximum concurrent connections |
+| `maintenance_work_mem` | 128 MB | — | Memory for VACUUM, CREATE INDEX |
+| `wal_buffers` | 16 MB | — | WAL write buffer size |
+| `max_wal_size` | 2 GB | — | WAL size before checkpoint |
+| `random_page_cost` | 1.1 | — | Random I/O cost estimate (SSD) |
+| `effective_io_concurrency` | 200 | — | Async I/O requests (SSD) |
+| `checkpoint_completion_target` | 0.9 | — | Spread checkpoint writes |
+| `autovacuum_max_workers` | 4 | — | Parallel autovacuum workers |
+| `autovacuum_naptime` | 30s | — | Time between autovacuum runs |
+| `shared_preload_libraries` | `pg_stat_statements` | — | Query stats tracking |
+| `log_min_duration_statement` | 1000 ms | — | Log queries slower than 1s |
+
+To view the live configuration from a running container:
+
+```bash
+docker compose exec postgres psql -U postgres -d soak_test \
+  -c "SELECT name, setting, unit FROM pg_settings WHERE name IN ('shared_buffers','work_mem','effective_cache_size','max_connections');"
+```
+
 ## Intensity
 
 | Variable | Default | Description |

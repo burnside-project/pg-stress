@@ -1,8 +1,24 @@
 # How It Works
 
-pg-stress connects to any PostgreSQL database, introspects the schema,
-and generates stress tests automatically. No configuration files to write.
-No models to map. No queries to define.
+pg-stress is a **100% local, one-off** stress testing platform. It connects to
+any PostgreSQL database, introspects the schema, and generates stress tests
+automatically. No configuration files to write. No models to map. No queries
+to define. No data leaves your machine.
+
+Unlike [pg-collector](https://github.com/burnside-project/pg-collector) which runs
+in production and ships telemetry, pg-stress is designed for **disposable test servers**.
+Import a production dump, stress it, get AI recommendations, throw it away.
+
+## Key Concepts
+
+- **Named Test Runs** — Every test starts from a known baseline (production dump).
+  Before/after snapshots are saved so you can compare runs.
+- **Live Activity** — Watch real queries from `pg_stat_activity` in real-time,
+  color-coded by type (SELECT, INSERT, JOIN, EXISTS).
+- **Schema Introspection** — Auto-discovers tables, FKs, indexes, classifies each table,
+  generates ORM classes and query patterns automatically.
+- **AI Analysis** — Claude reads 11 PostgreSQL diagnostic datasets and returns
+  actionable tuning advice, query fixes, capacity predictions.
 
 ## Three Phases at Startup
 
