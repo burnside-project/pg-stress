@@ -213,6 +213,17 @@ export default function Home() {
           </div>
         ))}
 
+        {/* Navigate */}
+        <div style={s.navSection}>Navigate</div>
+        <a href={typeof window !== "undefined" ? `${window.location.protocol}//${window.location.hostname}:8200` : "#"} target="_blank" style={{ ...s.navItem(false), textDecoration: "none" }}>
+          <div style={s.navDot("#3b82f6")} />
+          Metrics Dashboard
+        </a>
+        <a href="https://github.com/dataalgebra-engineering/pg-stress" target="_blank" style={{ ...s.navItem(false), textDecoration: "none" }}>
+          <div style={s.navDot("#64748b")} />
+          Documentation
+        </a>
+
         <div style={s.sidebarFooter}>
           Test Like a Machine
         </div>

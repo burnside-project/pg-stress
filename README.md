@@ -320,6 +320,9 @@ Each pattern is a generic template applied to **your** FK chains — not hardcod
 | Control Plane API | 8100 | REST API for WHAT IF scenarios, generator control, AI analysis |
 | Control Panel UI | 3100 | Browser-based dashboard with intensity controls |
 
+Both portals link to each other via the left sidebar **Navigate** section. The sidebar
+also includes a **Documentation** link to this repository.
+
 ## AI Analyzer
 
 After a stress test, send diagnostics to Claude for expert analysis.

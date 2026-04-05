@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Burnside Project — Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=2">
+    <link rel="stylesheet" href="/static/style.css?v=3">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
@@ -41,6 +41,16 @@
         <a href="#loadgen-panel" class="sidebar-nav-item">
             <div class="sidebar-dot" style="background:#3b82f6"></div>
             Load Generator
+        </a>
+
+        <div class="sidebar-nav-section">Navigate</div>
+        <a id="link-control-panel" class="sidebar-nav-item" target="_blank">
+            <div class="sidebar-dot" style="background:#8b5cf6"></div>
+            Control Panel
+        </a>
+        <a href="https://github.com/dataalgebra-engineering/pg-stress" class="sidebar-nav-item" target="_blank">
+            <div class="sidebar-dot" style="background:#64748b"></div>
+            Documentation
         </a>
 
         <div class="sidebar-footer">
@@ -184,6 +194,6 @@
 
     </div>
 
-    <script src="/static/dashboard.js?v=2"></script>
+    <script src="/static/dashboard.js?v=3"></script>
 </body>
 </html>

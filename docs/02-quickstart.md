@@ -130,9 +130,12 @@ Once the stack is running, use these tools to see what's happening:
 
 | URL | What you see |
 |-----|-------------|
-| `http://<host>:3100` | **Control Panel** — intensity controls, BYOD import, inject rows, bulk update, growth ladders, AI analysis, service status |
-| `http://<host>:8200` | **Dashboard** — real-time charts: TPS, cache hit ratio, active connections, table sizes, dead tuples |
+| `http://<host>:3100` | **Control Panel** — intensity controls, BYOD import, inject rows, bulk update, growth ladders, AI analysis, schema introspection |
+| `http://<host>:8200` | **Dashboard** — real-time charts: TPS, cache hit ratio, connections, table sizes with live growth deltas |
 | `http://<host>:8100/docs` | **API Docs** — Swagger UI for all control plane endpoints |
+
+Both portals have a left sidebar with a **Navigate** section to switch between them,
+plus a **Documentation** link to the GitHub repository.
 
 ### From the command line
 

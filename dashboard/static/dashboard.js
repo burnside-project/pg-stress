@@ -2,6 +2,7 @@
 
 const REFRESH_MS = 10_000;
 let timeRangeSec = 600; // default 10 minutes
+let prevTableRows = {}; // track row counts for delta highlighting
 
 // ─── Chart setup ───────────────────────────────────────────────────────
 
@@ -223,6 +224,10 @@ function updateTablesPanel(data) {
 
     for (const t of data.tables) {
         const tr = document.createElement('tr');
+        const prev = prevTableRows[t.name];
+        const delta = (prev != null && t.rows !== prev) ? t.rows - prev : 0;
+        const growing = delta > 0;
+        const shrinking = delta < 0;
 
         let barHtml = '-';
         if (t.pct_of_limit !== null) {
@@ -230,15 +235,29 @@ function updateTablesPanel(data) {
             barHtml = `<span class="bar-bg"><span class="bar-fill" style="width:${pct}%;background:${barColor(t.pct_of_limit)}"></span></span> ${t.pct_of_limit.toFixed(1)}%`;
         }
 
+        let deltaHtml = '';
+        if (growing) {
+            deltaHtml = `<span style="color:#16a34a;font-size:10px;font-weight:600">+${fmt(delta)}</span>`;
+        } else if (shrinking) {
+            deltaHtml = `<span style="color:#dc2626;font-size:10px;font-weight:600">${fmt(delta)}</span>`;
+        }
+
+        if (growing || shrinking) {
+            tr.style.transition = 'background 0.5s';
+            tr.style.background = growing ? '#f0fdf4' : '#fef2f2';
+            setTimeout(() => { tr.style.background = ''; }, 2000);
+        }
+
         tr.innerHTML = `
             <td>${t.name}</td>
-            <td class="num">${fmt(t.rows)}</td>
-            <td class="num">${fmt(t.dead_tuples)}</td>
+            <td class="num">${fmt(t.rows)} ${deltaHtml}</td>
+            <td class="num" style="color:${t.dead_tuples > 10000 ? '#dc2626' : '#94a3b8'}">${fmt(t.dead_tuples)}</td>
             <td class="num">${fmtBytes(t.size_bytes)}</td>
             <td>${barHtml}</td>
             <td class="num">${t.limit ? fmt(t.limit) : '-'}</td>
         `;
         tbody.appendChild(tr);
+        prevTableRows[t.name] = t.rows;
     }
 
     // Safety events.
@@ -285,6 +304,11 @@ document.getElementById('reset-btn').addEventListener('click', async () => {
     await fetch('/api/reset', { method: 'POST' });
     refresh();
 });
+
+// ─── Cross-portal link ──────────────────────────────────────────────
+
+const cpLink = document.getElementById('link-control-panel');
+if (cpLink) cpLink.href = `${location.protocol}//${location.hostname}:3100`;
 
 // ─── Auto-refresh ────────────────────────────────────────────────────
 
