@@ -5,26 +5,28 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type "publish" to confirm push to burnside-project/pg-stress'
+        description: 'Confirm publish to burnside-project/pg-stress'
         required: true
-        type: string
+        type: choice
+        options:
+          - 'no'
+          - 'publish'
       branch:
-        description: 'Branch to publish (default: main)'
-        required: false
+        description: 'Branch to publish'
+        required: true
         default: 'main'
-        type: string
 
 jobs:
   publish:
     name: Push to burnside-project/pg-stress
     runs-on: ubuntu-latest
-    if: github.event.inputs.confirm == 'publish'
+    if: ${{ inputs.confirm == 'publish' }}
 
     steps:
       - name: Checkout source repo
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.branch }}
+          ref: ${{ inputs.branch }}
           fetch-depth: 0  # Full history for clean push
 
       - name: Configure git
@@ -40,7 +42,7 @@ jobs:
           git remote add public https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/burnside-project/pg-stress.git
 
           # Push the branch
-          BRANCH="${{ github.event.inputs.branch }}"
+          BRANCH="${{ inputs.branch }}"
           echo "Publishing ${BRANCH} to burnside-project/pg-stress..."
           git push public ${BRANCH} --force
 
@@ -58,6 +60,6 @@ jobs:
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| **Source** | dataalgebra-engineering/pg-stress |" >> $GITHUB_STEP_SUMMARY
           echo "| **Target** | burnside-project/pg-stress |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Branch** | ${{ github.event.inputs.branch }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | ${{ inputs.branch }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Commit** | \`$(git rev-parse --short HEAD)\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Message** | $(git log -1 --pretty=%s) |" >> $GITHUB_STEP_SUMMARY
