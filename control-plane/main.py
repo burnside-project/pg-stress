@@ -346,20 +346,40 @@ def _do_inject(job_id: str, req: InjectRequest):
         if req.template:
             template = req.template
         else:
-            cols = query("""
-                SELECT column_name, data_type, is_nullable
+            # Find serial/identity PK columns to exclude (they auto-generate).
+            serial_cols = query("""
+                SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name = %s AND table_schema = 'public'
-                  AND column_default LIKE 'nextval%%'
+                  AND (column_default LIKE 'nextval%%' OR is_identity = 'YES')
+            """, (req.table,))
+            serial_names = {r["column_name"] for r in serial_cols}
+
+            # Get all non-serial columns.
+            all_cols = query("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = %s AND table_schema = 'public'
                 ORDER BY ordinal_position
             """, (req.table,))
+            non_serial = [r["column_name"] for r in all_cols if r["column_name"] not in serial_names]
 
-            template = f"""
-                INSERT INTO {req.table}
-                SELECT * FROM {req.table}
-                ORDER BY random()
-                LIMIT {{batch}}
-            """
+            if non_serial:
+                col_list = ", ".join(non_serial)
+                template = f"""
+                    INSERT INTO {req.table} ({col_list})
+                    SELECT {col_list} FROM {req.table}
+                    ORDER BY random()
+                    LIMIT {{batch}}
+                """
+            else:
+                # Fallback: table has no serial columns, copy everything.
+                template = f"""
+                    INSERT INTO {req.table}
+                    SELECT * FROM {req.table}
+                    ORDER BY random()
+                    LIMIT {{batch}}
+                """
 
         while remaining > 0:
             batch = min(remaining, batch_size)
