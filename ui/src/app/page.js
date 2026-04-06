@@ -120,6 +120,8 @@ const NAV = [
   { id: "target", label: "Database Target", dot: "#8b5cf6", tip: "Configure PG host, credentials, intensity, import dumps" },
   { id: "operations", label: "Data Operations", dot: "#f59e0b", tip: "Inject rows, bulk update, simulate table growth" },
   { id: "connections", label: "Connections", dot: "#3b82f6", tip: "Connection pressure, growth ladder, load generators" },
+  { section: "Query Replay" },
+  { id: "queries", label: "Production Queries", dot: "#dc2626", tip: "Import and replay real production queries" },
   { section: "Introspection" },
   { id: "schema", label: "Schema & ORM", dot: "#8b5cf6", tip: "Auto-discovered tables, FK chains, SQLAlchemy classes" },
   { section: "Analysis" },
@@ -147,6 +149,9 @@ export default function Home() {
   const [newTestIntensity, setNewTestIntensity] = useState("medium")
   const [newTestDump, setNewTestDump] = useState("")
   const [resetOnStart, setResetOnStart] = useState(true)
+  const [querySets, setQuerySets] = useState([])
+  const [replayStatus, setReplayStatus] = useState(null)
+  const [importText, setImportText] = useState("")
 
   const [f, setF] = useState({
     injectTable: "orders", injectRows: 1000000,
@@ -196,6 +201,14 @@ export default function Home() {
     fetch(`${ORM_API}/schema`).then(r => r.json()).then(setOrmSchema).catch(() => {})
     api("/tests/active").then(setActiveTest).catch(() => {})
     api("/tests").then(setTestHistory).catch(() => {})
+    api("/queries").then(setQuerySets).catch(() => {})
+  }, [])
+  // Replay status — poll every 3s.
+  useEffect(() => {
+    const poll = async () => { try { setReplayStatus(await api("/replay/status")) } catch {} }
+    poll()
+    const i = setInterval(poll, 3000)
+    return () => clearInterval(i)
   }, [])
   // Activity ticker — poll every 2s.
   useEffect(() => {
@@ -732,6 +745,154 @@ export default function Home() {
           </div>
         </div>
 
+        {/* ═══ SECTION: Query Replay ═════════════════════════════════ */}
+        <div id="section-queries" style={s.section}>
+          <div style={s.sectionHead}>
+            <span style={s.sectionTitle}>Production Query Replay</span>
+            <span style={s.sectionSub}>— Import real production queries and replay them under load</span>
+          </div>
+          <div style={s.grid}>
+
+            {/* Import queries */}
+            <div style={s.card("#dc2626")}>
+              <div style={s.cardTitle}>Import Queries</div>
+              <div style={s.cardDesc}>Paste pg_stat_statements JSON export or individual SQL queries.</div>
+              <div style={s.gap}>
+                <label style={s.label}>Query Set Name</label>
+                <input style={s.input} id="qs-name" defaultValue="production-queries" />
+              </div>
+              <div style={s.gap}>
+                <label style={s.label}>Queries (JSON array from pg_stat_statements)</label>
+                <textarea style={{ ...s.input, height: 120, fontFamily: "'SF Mono',Menlo,monospace", fontSize: 11 }}
+                  value={importText} onChange={e => setImportText(e.target.value)}
+                  placeholder={'[\n  {"query": "SELECT * FROM orders WHERE ...", "calls": 5000, "mean_exec_time": 12.5, "rows": 100},\n  {"query": "SELECT count(*) FROM ...", "calls": 1000, "mean_exec_time": 45.0, "rows": 1}\n]'} />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button style={{ ...s.btn, ...s.btnBlue, flex: 1 }} disabled={loading.importQ}
+                  onClick={async () => {
+                    try {
+                      const parsed = JSON.parse(importText)
+                      await act("importQ", () => post("/queries/import-stats", { name: document.getElementById("qs-name").value, queries: parsed }))
+                      setQuerySets(await api("/queries"))
+                      setImportText("")
+                    } catch (e) { log("Import error: " + e.message) }
+                  }}>
+                  {loading.importQ ? "Importing..." : "Import from pg_stat_statements"}
+                </button>
+              </div>
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 8 }}>
+                Export from production: <code style={{ background: "#f1f5f9", padding: "1px 4px", borderRadius: 2, fontSize: 10 }}>
+                  psql -c "SELECT query, calls, mean_exec_time, rows FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 50" --format=json
+                </code>
+              </div>
+            </div>
+
+            {/* Replay controls */}
+            <div style={s.card("#dc2626")}>
+              <div style={s.cardTitle}>Replay Engine</div>
+              <div style={s.cardDesc}>Replay imported queries against the test database at configurable concurrency.</div>
+
+              {replayStatus?.running ? (
+                <div>
+                  <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: 12, marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#dc2626", animation: "pulse 1.5s infinite" }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#991b1b" }}>Replaying</span>
+                      <span style={{ fontSize: 11, color: "#64748b", marginLeft: "auto" }}>{replayStatus.elapsed_s}s | {replayStatus.qps} qps | {replayStatus.total_errors} errors</span>
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>{replayStatus.total_executions?.toLocaleString()} queries executed</div>
+                  </div>
+                  <button style={{ ...s.btn, ...s.btnRed, width: "100%" }}
+                    onClick={async () => { await act("stopReplay", () => post("/replay/stop", {})); setReplayStatus(await api("/replay/status")) }}>
+                    Stop Replay
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div style={s.gap}>
+                    <label style={s.label}>Query Set</label>
+                    <select style={s.select} id="replay-set">
+                      {querySets.map(qs => <option key={qs.id} value={qs.id}>{qs.name} ({qs.query_count} queries)</option>)}
+                    </select>
+                  </div>
+                  <div style={s.row}>
+                    <div style={{ flex: 1 }}><label style={s.label}>Concurrency</label><input style={s.input} type="number" id="replay-conc" defaultValue={10} /></div>
+                    <div style={{ flex: 1 }}><label style={s.label}>Duration (sec, 0=forever)</label><input style={s.input} type="number" id="replay-dur" defaultValue={0} /></div>
+                  </div>
+                  <button style={{ ...s.btn, ...s.btnGreen, width: "100%", marginTop: 10 }}
+                    disabled={querySets.length === 0 || loading.startReplay}
+                    onClick={async () => {
+                      await act("startReplay", () => post("/replay/start", {
+                        query_set_id: document.getElementById("replay-set").value,
+                        concurrency: +document.getElementById("replay-conc").value,
+                        duration_s: +document.getElementById("replay-dur").value,
+                      }))
+                    }}>
+                    {loading.startReplay ? "Starting..." : "Start Replay"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Query sets list */}
+            <div style={s.card("#dc2626")}>
+              <div style={s.cardTitle}>Imported Query Sets ({querySets.length})</div>
+              <div style={s.cardDesc}>Manage imported production queries.</div>
+              {querySets.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#94a3b8" }}>No query sets imported yet.</p>
+              ) : (
+                <div style={{ maxHeight: 250, overflow: "auto" }}>
+                  {querySets.map(qs => (
+                    <div key={qs.id} style={{ display: "flex", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f1f5f9", gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{qs.name}</div>
+                        <div style={{ fontSize: 10, color: "#94a3b8" }}>{qs.query_count} queries | {qs.source} | {qs.imported_at?.split("T")[0]}</div>
+                      </div>
+                      <button style={{ ...s.btn, ...s.btnRed, fontSize: 10, padding: "3px 8px" }}
+                        onClick={async () => { await api(`/queries/${qs.id}`, { method: "DELETE" }); setQuerySets(await api("/queries")) }}>
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Per-query replay results */}
+          {replayStatus?.queries?.length > 0 && (
+            <div style={{ ...s.card("#dc2626"), marginTop: 12 }}>
+              <div style={s.cardTitle}>Per-Query Results</div>
+              <div style={{ overflow: "auto", maxHeight: 300 }}>
+                <table style={s.table}>
+                  <thead><tr>
+                    <th style={s.th}>Query</th>
+                    <th style={{ ...s.th, textAlign: "right" }}>Executions</th>
+                    <th style={{ ...s.th, textAlign: "right" }}>Avg ms</th>
+                    <th style={{ ...s.th, textAlign: "right" }}>Min ms</th>
+                    <th style={{ ...s.th, textAlign: "right" }}>Max ms</th>
+                    <th style={{ ...s.th, textAlign: "right" }}>Rows</th>
+                    <th style={{ ...s.th, textAlign: "right" }}>Errors</th>
+                  </tr></thead>
+                  <tbody>
+                    {replayStatus.queries.map((q, i) => (
+                      <tr key={i}>
+                        <td style={{ ...s.td, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={q.query}>{q.name}</td>
+                        <td style={{ ...s.td, textAlign: "right" }}>{q.executions.toLocaleString()}</td>
+                        <td style={{ ...s.td, textAlign: "right", color: q.avg_ms > 100 ? "#dc2626" : q.avg_ms > 20 ? "#f59e0b" : "#16a34a" }}>{q.avg_ms}</td>
+                        <td style={{ ...s.td, textAlign: "right", color: "#64748b" }}>{q.min_ms}</td>
+                        <td style={{ ...s.td, textAlign: "right", color: q.max_ms > 1000 ? "#dc2626" : "#64748b" }}>{q.max_ms}</td>
+                        <td style={{ ...s.td, textAlign: "right" }}>{q.rows.toLocaleString()}</td>
+                        <td style={{ ...s.td, textAlign: "right", color: q.errors > 0 ? "#dc2626" : "#94a3b8" }}>{q.errors}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* ═══ SECTION: Schema Introspection & ORM ═══════════════════ */}
         {ormSchema && (
         <div id="section-schema" style={s.section}>
@@ -933,6 +1094,24 @@ export default function Home() {
                 </div>
               ) : (
                 <p style={{ fontSize: 12, color: "#94a3b8" }}>No reports yet. Run AI analysis or a growth ladder to generate one.</p>
+              )}
+            </div>
+
+            <div style={s.card("#10b981")}>
+              <div style={s.cardTitle}>Executive Summary</div>
+              <div style={s.cardDesc}>Compare multiple test runs and generate a deployment readiness report.</div>
+              {testHistory.filter(t => t.status === "completed").length >= 2 ? (
+                <button style={{ ...s.btn, ...s.btnGreen, ...s.btnFull }} disabled={loading.execSummary}
+                  onClick={async () => {
+                    const ids = testHistory.filter(t => t.status === "completed").map(t => t.id)
+                    const r = await act("execSummary", () => post("/reports/executive-summary", { test_run_ids: ids }))
+                    if (r?.analysis) setReport(r)
+                    setReportsList(await api("/reports"))
+                  }}>
+                  {loading.execSummary ? "Generating..." : `Compare ${testHistory.filter(t => t.status === "completed").length} Test Runs`}
+                </button>
+              ) : (
+                <p style={{ fontSize: 12, color: "#94a3b8" }}>Need at least 2 completed tests to compare. Run more tests first.</p>
               )}
             </div>
 

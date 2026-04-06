@@ -300,6 +300,7 @@ services:
       - .:/app/project
       - ./analyzer:/app/analyzer:ro
       - control-plane-reports:/app/reports
+      - control-plane-data:/data
     ports:
       - "${CONTROL_PLANE_PORT:-8100}:8100"
     networks:
@@ -446,4 +447,5 @@ volumes:
   collector-output:
   pgbench-results:
   control-plane-reports:
+  control-plane-data:
   dashboard-data:

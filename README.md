@@ -617,13 +617,83 @@ make report-remote DEPLOY_HOST=4
 | [Configuration](docs/05-configuration.md) | All environment variables |
 | [Releases & CI/CD](docs/06-releases.md) | Automated pipeline, versioning, Docker images, promoting RCs |
 
-## Burnside Project
+## Production Query Replay
 
-| Project | Role |
-|---------|------|
-| **pg-stress** | One-off stress test → LLM advisory (this repo) |
-| [pg-collector](https://github.com/burnside-project/pg-collector) | Ongoing production telemetry |
-| [pg-warehouse](https://github.com/burnside-project/pg-warehouse) | Local-first analytical warehouse (PostgreSQL → DuckDB) |
+Import your actual production queries and replay them against the test database
+under load. This bridges the gap between "random stress" and "how will MY queries
+behave?"
+
+### Import queries from production
+
+```bash
+# On your production server — export top 50 queries:
+psql -c "SELECT query, calls, mean_exec_time, rows \
+         FROM pg_stat_statements \
+         ORDER BY total_exec_time DESC LIMIT 50" --format=json > queries.json
+
+# Upload to pg-stress:
+curl -X POST http://<host>:8100/queries/import-stats \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"prod-top-50","queries":'$(cat queries.json)'}'
+```
+
+Or use the Control Panel UI — paste the JSON directly.
+
+### Replay under load
+
+```bash
+# Start replay at 10 concurrent connections:
+curl -X POST http://<host>:8100/replay/start \
+  -H 'Content-Type: application/json' \
+  -d '{"query_set_id":"<set-id>","concurrency":10,"duration_s":3600}'
+
+# Check per-query timing:
+curl http://<host>:8100/replay/status
+
+# Stop and save results:
+curl -X POST http://<host>:8100/replay/stop
+```
+
+### 3-Day Capacity Planning Workflow
+
+```
+Day 1: "What do I have today?"
+  → Reset to baseline → Replay production queries at 1x → Medium intensity → 24h
+  → Stop → Claude generates Report 1
+
+Day 2: "What breaks at 2x scale?"
+  → Reset to baseline → Inject 2x data → Replay at 2x frequency → High intensity → 24h
+  → Stop → Claude generates Report 2
+
+Day 3: "Do the fixes work?"
+  → Reset to baseline → Inject 2x data → Apply recommended indexes/config → 24h
+  → Stop → Claude generates Report 3
+
+Day 4: Executive Summary
+  → Compare all 3 reports → Deployment readiness recommendation
+  → Hand off to pg-deploy for right-sized infrastructure
+  → Hand off to pg-collector for ongoing monitoring
+```
+
+## Burnside Project Product Suite
+
+```
+pg-stress (Day 0)          pg-deploy (Day 1)         pg-collector (Day 30+)
+"What will happen?"        "Right-size it"           "What is happening?"
+       │                        │                          │
+       ▼                        ▼                          ▼
+  Capacity planning    →   Deploy with          →   Production monitoring
+  Query replay             confidence               Drift detection
+  AI recommendations       PG config tuning          Predictive alerts
+  Right-sizing report      Infrastructure spec       Prescriptive tuning
+```
+
+| Product | Phase | Purpose | Duration |
+|---------|-------|---------|----------|
+| **[pg-stress](https://github.com/burnside-project/pg-stress)** | Pre-deploy | Capacity planning, what-if, query replay | Days (one-off) |
+| **pg-deploy** | Deploy | Infrastructure provisioning, PG config | Minutes (one-off) |
+| **[pg-collector](https://github.com/burnside-project/pg-collector)** | Post-deploy | Production monitoring, prediction, tuning | Ongoing |
+| **[pg-warehouse](https://github.com/burnside-project/pg-warehouse)** | Analytics | Historical trends, cross-system analysis | Ongoing |
 
 ## License
 

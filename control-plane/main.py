@@ -961,6 +961,212 @@ def get_active_test():
         return {"status": "no_active_test"}
 
 
+# ── Query Replay ─────────────────────────────────────────────────────────
+
+from query_replay import (
+    delete_query_set,
+    engine as replay_engine,
+    get_queries,
+    get_replay_results,
+    import_pg_stat_statements,
+    import_sql_files,
+    import_sql_text,
+    list_query_sets,
+)
+
+
+class ImportStatsRequest(BaseModel):
+    name: str
+    queries: list[dict]  # [{query, calls, mean_exec_time, rows}, ...]
+
+
+class ImportSqlRequest(BaseModel):
+    name: str
+    queries: list[dict]  # [{name, query, weight}, ...]
+
+
+class ReplayStartRequest(BaseModel):
+    query_set_id: str
+    concurrency: int = 10
+    duration_s: int = 0  # 0 = run until stopped
+
+
+@app.post("/queries/import-stats")
+def api_import_stats(req: ImportStatsRequest):
+    """Import queries from pg_stat_statements JSON export."""
+    return import_pg_stat_statements(req.name, req.queries)
+
+
+@app.post("/queries/import-sql")
+def api_import_sql(req: ImportSqlRequest):
+    """Import queries from a list of SQL statements."""
+    return import_sql_text(req.name, req.queries)
+
+
+@app.post("/queries/import-dir")
+def api_import_dir(data: dict):
+    """Import queries from .sql files in a directory on the server."""
+    return import_sql_files(data.get("name", "unnamed"), data.get("dir", "/tmp/queries"))
+
+
+@app.get("/queries")
+def api_list_queries():
+    """List all imported query sets."""
+    return list_query_sets()
+
+
+@app.get("/queries/{set_id}")
+def api_get_queries(set_id: str):
+    """Get queries in a set."""
+    return get_queries(set_id)
+
+
+@app.delete("/queries/{set_id}")
+def api_delete_queries(set_id: str):
+    """Delete a query set."""
+    delete_query_set(set_id)
+    return {"status": "deleted", "id": set_id}
+
+
+@app.post("/replay/start")
+def api_replay_start(req: ReplayStartRequest):
+    """Start replaying queries from a set."""
+    test = None
+    try:
+        import httpx
+        r = httpx.get("http://dashboard:8000/api/test-run", timeout=5)
+        test = r.json() if r.status_code == 200 else None
+    except Exception:
+        pass
+    test_run_id = test.get("id", "") if test and test.get("status") == "running" else ""
+    return replay_engine.start(req.query_set_id, req.concurrency, req.duration_s, test_run_id)
+
+
+@app.post("/replay/stop")
+def api_replay_stop():
+    """Stop the running replay."""
+    return replay_engine.stop()
+
+
+@app.get("/replay/status")
+def api_replay_status():
+    """Get current replay status and per-query stats."""
+    return replay_engine.snapshot()
+
+
+@app.get("/replay/results/{test_run_id}")
+def api_replay_results(test_run_id: str):
+    """Get saved replay results for a test run."""
+    return get_replay_results(test_run_id)
+
+
+# ── Executive Summary (cross-run comparison) ─────────────────────────────
+
+
+@app.post("/reports/executive-summary")
+def api_executive_summary(data: dict):
+    """Generate an executive summary comparing multiple test runs.
+
+    Uses DuckDB to aggregate metrics across runs, then sends to Claude.
+    """
+    test_run_ids = data.get("test_run_ids", [])
+    if len(test_run_ids) < 2:
+        raise HTTPException(400, "Need at least 2 test run IDs to compare")
+
+    # Gather data for each test run.
+    runs_data = []
+    for rid in test_run_ids:
+        try:
+            import httpx
+            r = httpx.get(f"http://dashboard:8000/api/test-runs", timeout=5)
+            all_runs = r.json() if r.status_code == 200 else []
+            run = next((t for t in all_runs if t["id"] == rid), None)
+            if run:
+                run["replay_results"] = get_replay_results(rid)
+                runs_data.append(run)
+        except Exception:
+            pass
+
+    if not runs_data:
+        raise HTTPException(404, "No test runs found for the given IDs")
+
+    # Also collect current PG diagnostics for context.
+    diagnostics = {}
+    try:
+        from collect import collect_all
+        diagnostics = collect_all()
+    except Exception:
+        pass
+
+    # Build prompt for Claude.
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(400, "ANTHROPIC_API_KEY not set — cannot generate AI summary")
+
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+
+    summary_data = json.dumps({"test_runs": runs_data, "diagnostics": diagnostics}, indent=2, default=str)
+
+    response = client.messages.create(
+        model=os.environ.get("ANALYZER_MODEL", "claude-sonnet-4-20250514"),
+        max_tokens=4096,
+        system="""You are a senior PostgreSQL DBA analyzing stress test results from pg-stress.
+You are comparing multiple test runs to help with deployment capacity planning.
+Each test run started from the same baseline (production dump) but with different
+configurations (intensity, data volume, indexes, PG settings).
+Provide actionable deployment recommendations backed by the data.""",
+        messages=[{"role": "user", "content": f"""Compare these test runs and generate a deployment readiness report.
+
+## Test Run Data
+
+{summary_data}
+
+## Required Sections
+
+### 1. Executive Summary
+One paragraph: what was tested, key findings, go/no-go recommendation.
+
+### 2. Test Run Comparison Table
+| Metric | {' | '.join(r['name'] for r in runs_data)} |
+Show: total rows before/after, sample count, intensity, duration.
+
+### 3. Performance Comparison
+If query replay results exist, show per-query before/after timing.
+Highlight queries that degraded >50% between runs.
+
+### 4. Capacity Prediction
+Based on growth patterns across runs, predict when limits will be hit.
+
+### 5. Deployment Recommendations
+Specific PostgreSQL settings, indexes, and infrastructure sizing.
+Format as actionable items with expected impact.
+
+### 6. Next Steps
+What to test next, what to monitor post-deployment (pg-collector handoff).
+"""}],
+    )
+
+    report_text = response.content[0].text
+
+    # Save report.
+    report_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    report = {
+        "type": "executive_summary",
+        "id": report_id,
+        "test_run_ids": test_run_ids,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "analysis": report_text,
+        "runs": [{"id": r["id"], "name": r["name"], "intensity": r["intensity"]} for r in runs_data],
+    }
+    report_path = REPORTS_DIR / f"executive-{report_id}.json"
+    report_path.write_text(json.dumps(report, indent=2, default=str))
+    md_path = REPORTS_DIR / f"executive-{report_id}.md"
+    md_path.write_text(report_text)
+
+    return report
+
+
 # ── Import (BYOD) ────────────────────────────────────────────────────────
 
 

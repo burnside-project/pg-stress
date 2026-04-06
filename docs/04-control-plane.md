@@ -41,7 +41,14 @@ curl -s http://<host>:9091/healthz | python3 -m json.tool
 | `/analyze/latest` | GET | Latest analysis report |
 | `/jobs` | GET | List background jobs (with progress, before/after) |
 | `/jobs/{id}` | GET | Job status |
+| `/queries` | GET | List imported query sets |
+| `/queries/import-stats` | POST | Import from pg_stat_statements JSON |
+| `/queries/import-sql` | POST | Import SQL queries manually |
+| `/replay/start` | POST | Start replaying queries at configurable concurrency |
+| `/replay/stop` | POST | Stop replay and save per-query results |
+| `/replay/status` | GET | Live replay stats (executions, avg_ms, errors per query) |
 | `/reports` | GET | Saved reports |
+| `/reports/executive-summary` | POST | Compare multiple test runs, generate AI deployment report |
 
 ## Test Runs
 
