@@ -80,14 +80,19 @@ ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes
      │          deployment readiness report → hand off to pg-deploy
 ```
 
----
-
 > ### Control Panel (`:3100`) — Test runs, live activity, WHAT IF scenarios, AI analysis
 > ![Control Panel](assets/control-panel-full.png)
+
+---
+
+> ### Control Panel (`:3100`) — What if senerio stress
+> ![Control Panel](assets/what-if.png)
 >
 > `http://<host>:3100` — Start/stop named tests, inject rows, run growth ladders,
-> view SQLAlchemy introspection, trigger Claude AI analysis. Live activity ticker
-> shows real queries hitting the database in real-time.
+> Introspects tables, FKs, indexes on startup. Builds a directed graph cached
+> Inject rows into a parent table and automatically inject proportional child rows 
+  following the FK graph. Ratios calculated from existing data. Works with any schema
+  ecommerce, CRM, healthcare
 
 ---
 
