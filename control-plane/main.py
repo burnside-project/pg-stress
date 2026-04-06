@@ -518,12 +518,26 @@ def _do_connections(job_id: str, req: ConnectionsRequest):
             FROM pg_stat_database WHERE datname = %s
         """, (PG_DATABASE,))
 
-        # Run pgbench inline.
+        # Initialize pgbench tables if they don't exist (needed for TPC-B mode).
+        env = os.environ.copy()
+        env["PGPASSWORD"] = PG_PASSWORD
+
+        pgbench_exists = query("SELECT 1 FROM pg_tables WHERE tablename = 'pgbench_accounts' AND schemaname = 'public'")
+        if not pgbench_exists:
+            log.info("Initializing pgbench tables (first time)...")
+            update_job(job_id, msg="Initializing pgbench tables...")
+            subprocess.run(
+                ["pgbench", "-h", PG_HOST, "-p", str(PG_PORT), "-U", PG_USER, "-d", PG_DATABASE, "-i", "-s", "10"],
+                capture_output=True, text=True, timeout=120, env=env,
+            )
+
         mode_flag = {
             "readonly": "--select-only",
             "tpcb": "",
             "mixed": "",
         }.get(req.mode, "")
+
+        update_job(job_id, progress=10, msg=f"Running {req.connections} connections for {req.duration}s ({req.mode})...")
 
         cmd = [
             "pgbench", "-h", PG_HOST, "-p", str(PG_PORT),
@@ -533,9 +547,6 @@ def _do_connections(job_id: str, req: ConnectionsRequest):
         ]
         if mode_flag:
             cmd.append(mode_flag)
-
-        env = os.environ.copy()
-        env["PGPASSWORD"] = PG_PASSWORD
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=req.duration + 60, env=env)
 
@@ -591,6 +602,17 @@ def connection_pressure(req: ConnectionsRequest, background_tasks: BackgroundTas
 
 def _do_ladder(job_id: str, req: LadderRequest):
     try:
+        # Initialize pgbench tables if needed.
+        env = os.environ.copy()
+        env["PGPASSWORD"] = PG_PASSWORD
+        pgbench_exists = query("SELECT 1 FROM pg_tables WHERE tablename = 'pgbench_accounts' AND schemaname = 'public'")
+        if not pgbench_exists:
+            update_job(job_id, msg="Initializing pgbench tables...")
+            subprocess.run(
+                ["pgbench", "-h", PG_HOST, "-p", str(PG_PORT), "-U", PG_USER, "-d", PG_DATABASE, "-i", "-s", "10"],
+                capture_output=True, text=True, timeout=120, env=env,
+            )
+
         phases = []
         for step_conns in req.steps:
             log.info("ladder: phase %d connections for %ds", step_conns, req.phase_duration)
@@ -616,8 +638,7 @@ def _do_ladder(job_id: str, req: LadderRequest):
             if mode_flag:
                 cmd.append(mode_flag)
 
-            env = os.environ.copy()
-            env["PGPASSWORD"] = PG_PASSWORD
+            update_job(job_id, msg=f"Phase {len(phases)+1}/{len(req.steps)}: {step_conns} connections for {req.phase_duration}s")
 
             result = subprocess.run(
                 cmd, capture_output=True, text=True,
