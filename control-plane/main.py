@@ -333,8 +333,8 @@ def stop_generator(name: str):
 def _do_inject(job_id: str, req: InjectRequest):
     try:
         # Snapshot before.
-        before_rows = query("SELECT n_live_tup FROM pg_stat_user_tables WHERE relname = %s", (req.table,))
-        before_count = before_rows[0]["n_live_tup"] if before_rows else 0
+        before_rows = query("SELECT reltuples::bigint AS rows FROM pg_class WHERE relname = %s", (req.table,))
+        before_count = before_rows[0]["rows"] if before_rows else 0
         before_size = query("SELECT pg_size_pretty(pg_total_relation_size(%s::regclass)) AS size", (req.table,))
         jobs[job_id]["before"] = {"rows": before_count, "size": before_size[0]["size"] if before_size else "?"}
         update_job(job_id, progress=0, msg=f"Starting inject into {req.table} ({before_count:,} rows)")
@@ -355,9 +355,24 @@ def _do_inject(job_id: str, req: InjectRequest):
             """, (req.table,))
             serial_names = {r["column_name"] for r in serial_cols}
 
+            # Find columns with unique constraints (need to randomize these).
+            unique_cols = query("""
+                SELECT a.attname AS column_name, t.typname AS data_type
+                FROM pg_index i
+                JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                JOIN pg_type t ON t.oid = a.atttypid
+                WHERE i.indrelid = %s::regclass
+                  AND i.indisunique = true
+                  AND i.indisprimary = false
+                  AND a.attname NOT IN (SELECT column_name FROM information_schema.columns
+                                        WHERE table_name = %s AND table_schema = 'public'
+                                        AND (column_default LIKE 'nextval%%' OR is_identity = 'YES'))
+            """, (req.table, req.table))
+            unique_map = {r["column_name"]: r["data_type"] for r in unique_cols}
+
             # Get all non-serial columns.
             all_cols = query("""
-                SELECT column_name
+                SELECT column_name, data_type
                 FROM information_schema.columns
                 WHERE table_name = %s AND table_schema = 'public'
                 ORDER BY ordinal_position
@@ -366,14 +381,29 @@ def _do_inject(job_id: str, req: InjectRequest):
 
             if non_serial:
                 col_list = ", ".join(non_serial)
+                # Build SELECT expressions: randomize unique columns to avoid conflicts.
+                select_exprs = []
+                for r in all_cols:
+                    col = r["column_name"]
+                    if col in serial_names:
+                        continue
+                    if col in unique_map:
+                        dtype = unique_map[col]
+                        if dtype in ("text", "varchar", "bpchar"):
+                            # Append random suffix to text unique columns.
+                            select_exprs.append(f"{col} || '_' || substr(md5(random()::text), 1, 8) AS {col}")
+                        else:
+                            select_exprs.append(col)
+                    else:
+                        select_exprs.append(col)
+                select_list = ", ".join(select_exprs)
                 template = f"""
                     INSERT INTO {req.table} ({col_list})
-                    SELECT {col_list} FROM {req.table}
+                    SELECT {select_list} FROM {req.table}
                     ORDER BY random()
                     LIMIT {{batch}}
                 """
             else:
-                # Fallback: table has no serial columns, copy everything.
                 template = f"""
                     INSERT INTO {req.table}
                     SELECT * FROM {req.table}
@@ -394,9 +424,9 @@ def _do_inject(job_id: str, req: InjectRequest):
         update_job(job_id, progress=95, msg=f"Running ANALYZE on {req.table}...")
         execute(f"ANALYZE {req.table}")
 
-        # Snapshot after.
-        after_rows = query("SELECT n_live_tup FROM pg_stat_user_tables WHERE relname = %s", (req.table,))
-        after_count = after_rows[0]["n_live_tup"] if after_rows else 0
+        # Snapshot after — use reltuples (updated by ANALYZE) for accurate count.
+        after_rows = query("SELECT reltuples::bigint AS rows FROM pg_class WHERE relname = %s", (req.table,))
+        after_count = after_rows[0]["rows"] if after_rows else 0
         after_size = query("SELECT pg_size_pretty(pg_total_relation_size(%s::regclass)) AS size", (req.table,))
         after = {"rows": after_count, "size": after_size[0]["size"] if after_size else "?"}
 
@@ -815,14 +845,18 @@ def _snapshot_db() -> dict:
     try:
         tables = {}
         rows = query("""
-            SELECT relname, n_live_tup, n_dead_tup,
-                   pg_size_pretty(pg_total_relation_size(relid)) AS size,
-                   pg_total_relation_size(relid) AS size_bytes
-            FROM pg_stat_user_tables ORDER BY n_live_tup DESC
+            SELECT s.relname,
+                   c.reltuples::bigint AS n_live_tup,
+                   s.n_dead_tup,
+                   pg_size_pretty(pg_total_relation_size(s.relid)) AS size,
+                   pg_total_relation_size(s.relid) AS size_bytes
+            FROM pg_stat_user_tables s
+            JOIN pg_class c ON c.relname = s.relname AND c.relnamespace = 'public'::regnamespace
+            ORDER BY c.reltuples DESC
         """)
         total_rows = 0
         for r in rows:
-            tables[r["relname"]] = {"rows": r["n_live_tup"], "dead": r["n_dead_tup"], "size": r["size"]}
+            tables[r["relname"]] = {"n_live_tup": r["n_live_tup"], "n_dead_tup": r["n_dead_tup"], "size": r["size"]}
             total_rows += r["n_live_tup"]
 
         db_size = query("SELECT pg_size_pretty(pg_database_size(%s)) AS size", (PG_DATABASE,))
