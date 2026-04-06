@@ -155,7 +155,7 @@ export default function Home() {
   const [activeDataOp, setActiveDataOp] = useState(null)  // {type, table, jobId}
 
   const [f, setF] = useState({
-    injectTable: "orders", injectRows: 1000000,
+    injectTable: "orders", injectRows: 10000,
     updateTable: "orders", updateSet: "status='archived'", updateWhere: "placed_at < now() - interval '1 year'", updateBatch: 100000,
     connCount: 50, connDuration: 300, connMode: "mixed",
     ladderSteps: "10,25,50,100,200", ladderDuration: 180, ladderMode: "mixed",
@@ -640,15 +640,26 @@ export default function Home() {
           <div style={s.grid}>
             <div style={s.card("#f59e0b")}>
               <div style={s.cardTitle}>WHAT IF: Inject Rows</div>
-              <div style={s.cardDesc}>"What if this table grows by 5M rows while under load?"</div>
+              <div style={s.cardDesc}>"What if this table grows while under load?"</div>
               <div style={s.gap}>
                 <label style={s.label}>Target Table</label>
                 <select style={s.select} value={f.injectTable} onChange={e => set("injectTable", e.target.value)}>
-                  {tables.map(t => <option key={t}>{t}</option>)}
+                  {tables.map(t => {
+                    const fkCount = ormSchema?.relationships?.filter(r => r.child === t || r.parent === t).length || 0
+                    return <option key={t}>{t} {fkCount > 0 ? `(${fkCount} FK${fkCount > 1 ? 's' : ''})` : ''}</option>
+                  })}
                 </select>
               </div>
+              {(() => {
+                const fkCount = ormSchema?.relationships?.filter(r => r.child === f.injectTable || r.parent === f.injectTable).length || 0
+                return fkCount >= 3 ? (
+                  <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 6, padding: 8, marginBottom: 8, fontSize: 11, color: "#92400e" }}>
+                    <strong>{f.injectTable}</strong> has {fkCount} FK relationships. Injection clones existing rows with valid FKs, but tables with many unique constraints may be slower. Large batches ({'>'}100K) may take several minutes.
+                  </div>
+                ) : null
+              })()}
               <div style={s.gap}>
-                <label style={s.label}>Number of Rows</label>
+                <label style={s.label}>Number of Rows (recommended: 1K-100K per batch)</label>
                 <input style={s.input} type="number" value={f.injectRows} onChange={e => set("injectRows", +e.target.value)} />
               </div>
               <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.inject || activeDataOp}
@@ -658,6 +669,9 @@ export default function Home() {
                 }}>
                 {loading.inject ? "Injecting..." : `Inject ${fmt(f.injectRows)} rows into ${f.injectTable}`}
               </button>
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6 }}>
+                Clones random rows with valid FK references. Unique text columns (email, sku) get random suffixes. PK auto-generates.
+              </div>
             </div>
 
             <div style={s.card("#f59e0b")}>
@@ -704,17 +718,31 @@ export default function Home() {
               <div style={s.cardDesc}>Live row counts — updates every 5 seconds. Changes highlighted.</div>
               <div style={{ maxHeight: 320, overflow: "auto" }}>
                 <table style={s.table}>
-                  <thead><tr><th style={s.th}>Table</th><th style={{ ...s.th, textAlign: "right" }}>Rows</th><th style={{ ...s.th, textAlign: "right" }}>Change</th><th style={{ ...s.th, textAlign: "right" }}>Dead</th><th style={{ ...s.th, textAlign: "right" }}>Size</th></tr></thead>
+                  <thead><tr><th style={s.th}>Table</th><th style={s.th}>FKs</th><th style={{ ...s.th, textAlign: "right" }}>Rows</th><th style={{ ...s.th, textAlign: "right" }}>Change</th><th style={{ ...s.th, textAlign: "right" }}>Dead</th><th style={{ ...s.th, textAlign: "right" }}>Size</th></tr></thead>
                   <tbody>
                     {tables.map(t => {
                       const d = status.tables[t]
                       const prev = prevTableRows[t]
                       const delta = (prev != null && d.n_live_tup !== prev) ? d.n_live_tup - prev : 0
                       const isTarget = activeDataOp?.table === t
+                      const fkCount = ormSchema?.relationships?.filter(r => r.child === t || r.parent === t).length || 0
+                      const classification = ormSchema?.classification ? Object.entries(ormSchema.classification).find(([,tbls]) => tbls.includes(t))?.[0] : null
+                      const classColors = { entity: "#2563eb", transactional: "#f59e0b", append_only: "#16a34a", lookup: "#94a3b8", hierarchical: "#8b5cf6" }
                       return (<tr key={t} style={{ background: isTarget ? "#fefce8" : delta > 0 ? "#f0fdf4" : delta < 0 ? "#fef2f2" : "", transition: "background 0.5s" }}>
                         <td style={{ ...s.td, fontWeight: isTarget ? 600 : 400 }}>
                           {t}
                           {isTarget && <span style={{ marginLeft: 4, fontSize: 10, color: "#f59e0b" }}>&#9203;</span>}
+                          {classification && <span style={{ marginLeft: 4, fontSize: 8, color: classColors[classification] || "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>{classification.replace("_", " ")}</span>}
+                        </td>
+                        <td style={{ ...s.td, textAlign: "center" }}>
+                          {fkCount > 0 ? (
+                            <span title={`${fkCount} FK relationship${fkCount > 1 ? "s" : ""}`} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                              {Array.from({ length: Math.min(fkCount, 5) }).map((_, i) => (
+                                <span key={i} style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: fkCount >= 4 ? "#dc2626" : fkCount >= 2 ? "#f59e0b" : "#16a34a" }} />
+                              ))}
+                              {fkCount > 5 && <span style={{ fontSize: 9, color: "#64748b" }}>+{fkCount - 5}</span>}
+                            </span>
+                          ) : <span style={{ color: "#e2e8f0" }}>—</span>}
                         </td>
                         <td style={{ ...s.td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: delta !== 0 ? 700 : 400 }}>{fmt(d.n_live_tup)}</td>
                         <td style={{ ...s.td, textAlign: "right", fontSize: 11, fontWeight: 600, color: delta > 0 ? "#16a34a" : delta < 0 ? "#dc2626" : "#e2e8f0" }}>
