@@ -3,7 +3,9 @@ FROM python:3.12-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 postgresql-client docker.io \
+    libpq5 postgresql-common docker.io gnupg \
+    && sh /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
+    && apt-get install -y --no-install-recommends postgresql-client-15 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
