@@ -728,8 +728,6 @@ export default function Home() {
                 </table>
               </div>
             </div>
-          </div>
-        </div>
 
             {/* Connection Pressure — same grid, same WHAT IF section */}
             <div style={s.card("#f59e0b")}>
