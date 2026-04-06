@@ -151,8 +151,10 @@ def import_sql_files(name: str, sql_dir: str) -> dict:
             content = f.read_text().strip()
             # Split on semicolons for multi-statement files.
             for stmt in content.split(";"):
-                stmt = stmt.strip()
-                if not stmt or stmt.startswith("--"):
+                # Strip comment lines, then check if anything remains.
+                lines = [l for l in stmt.strip().splitlines() if not l.strip().startswith("--")]
+                stmt = "\n".join(lines).strip()
+                if not stmt:
                     continue
                 _conn.execute(
                     "INSERT INTO queries (query_set_id, query, name, weight) VALUES (?,?,?,?)",
