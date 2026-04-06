@@ -177,6 +177,32 @@ make db-size
 | **DB size growth** | Dashboard or `/status` | Track how fast the database is growing under load |
 | **Cache hit ratio** | Dashboard | Below 99% means shared_buffers may be too small |
 | **Errors** | `/healthz` on `:9091` | Non-zero errors means queries are failing |
+| **Schema graph** | `/schema/graph` on `:8100` | Tables, FKs, classifications — cached in SQLite |
+| **Cascade preview** | `/schema/cascade/{table}` | How many rows will be injected across child tables |
+
+## WHAT IF Scenarios
+
+Run one at a time, on top of active load generators:
+
+```bash
+# Cascading inject — parent + proportional children
+curl -X POST http://<host>:8100/inject/cascade \
+  -H 'Content-Type: application/json' \
+  -d '{"table":"orders","rows":10000,"cascade":true}'
+# → orders: 10K + order_items: 2.3K + payments: 2.3K + shipments: 700
+
+# Single table inject
+curl -X POST http://<host>:8100/inject \
+  -d '{"table":"audit_log","rows":10000}'
+
+# Bulk update
+curl -X POST http://<host>:8100/bulk-update \
+  -d '{"table":"orders","set_clause":"updated_at=now()","where_clause":"id < 1000"}'
+
+# Connection spike
+curl -X POST http://<host>:8100/connections \
+  -d '{"connections":200,"duration":300,"mode":"mixed"}'
+```
 
 ## Next Steps
 

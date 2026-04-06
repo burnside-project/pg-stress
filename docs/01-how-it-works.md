@@ -15,12 +15,16 @@ Import a production dump, stress it, get AI recommendations, throw it away.
   Before/after snapshots are saved so you can compare runs.
 - **Live Activity** — Watch real queries from `pg_stat_activity` in real-time,
   color-coded by type (SELECT, INSERT, JOIN, EXISTS).
-- **Schema Introspection** — Auto-discovers tables, FKs, indexes, classifies each table,
-  generates ORM classes and query patterns automatically.
-- **AI Analysis** — Claude reads 11 PostgreSQL diagnostic datasets and returns
-  actionable tuning advice, query fixes, capacity predictions.
+- **Schema Graph (NetworkX)** — Introspects tables, FKs, indexes on startup.
+  Builds a directed graph cached in SQLite — instant on restart. Scales to 5,000+ tables.
+- **Cascading Inject** — Inject into a parent table, auto-inject proportional children
+  following the FK graph. Ratios from existing data. Works with any domain.
+- **Production Query Replay** — Import queries from `pg_stat_statements` or SQL files.
+  Replay alongside generators at configurable concurrency.
+- **AI Analysis** — Claude reads 11 PostgreSQL diagnostic datasets, returns
+  tuning advice, query fixes, capacity predictions. Executive summary across test runs.
 
-## Three Phases at Startup
+## Four Phases
 
 ```
 YOUR DATABASE
@@ -28,20 +32,20 @@ YOUR DATABASE
      ▼
 1. INTROSPECT
    Connect to PostgreSQL, discover:
-   ├── Tables, columns, types, PKs
-   ├── Foreign keys → relationship graph
+   ├── Tables, columns, types, PKs, unique constraints
+   ├── Foreign keys → NetworkX directed graph (cached in SQLite)
    ├── FK chains (depth 2-4) for query patterns
-   ├── Row counts → max IDs per table
+   ├── Row counts, sizes, unique constraints
    ├── Indexes (btree, gin, gist)
-   └── Classify each table:
-       entity | transactional | append_only | lookup | hierarchical
+   ├── Classify: entity | transactional | append_only | lookup | hierarchical
+   └── Cache graph in SQLite (instant load on restart)
      │
      ▼
 2. REFLECT
    SQLAlchemy automap_base():
    ├── ORM classes generated for every table
    ├── Relationships auto-detected from FK constraints
-   └── Works with 5 tables or 500 tables
+   └── Works with 5 tables or 5,000 tables
      │
      ▼
 3. GENERATE LOAD

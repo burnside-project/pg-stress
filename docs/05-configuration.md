@@ -156,14 +156,17 @@ Access via API (`GET /reports`), Control Panel UI (Reports section), or mount th
 
 ### Data Storage
 
-| Data | Storage | Volume | Persists across restarts? |
-|------|---------|--------|---------------------------|
-| Dashboard metrics | SQLite | `dashboard-data` (`/data/metrics.db`) | Yes |
-| AI analysis reports | JSON + Markdown files | `control-plane-reports` (`/app/reports/`) | Yes |
-| Ladder results | JSON files | `control-plane-reports` (`/app/reports/`) | Yes |
+| Data | Storage | Volume | Persists? |
+|------|---------|--------|-----------|
+| Schema graph | SQLite (NetworkX cache) | `control-plane-data` (`/data/schema_cache.db`) | Yes |
+| Imported queries | SQLite | `control-plane-data` (`/data/queries.db`) | Yes |
+| Dashboard metrics + test runs | SQLite | `dashboard-data` (`/data/metrics.db`) | Yes |
+| AI analysis reports | JSON + Markdown | `control-plane-reports` (`/app/reports/`) | Yes |
 | PostgreSQL data | PostgreSQL files | `stress-pg-data` | Yes |
 | pgbench results | Text files | `pgbench-results` | Yes |
 
-Dashboard metrics are stored in SQLite so they survive container restarts.
-Use `make down` to remove all volumes including stored data.
-Use `make stop` to stop services but keep all data intact.
+All data survives container restarts. Schema graph is cached with a hash —
+if the database schema changes, pg-stress re-introspects automatically.
+
+Use `make stop` to stop services but keep all data.
+Use `make down` to remove all volumes (full reset).

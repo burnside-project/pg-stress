@@ -41,6 +41,11 @@ curl -s http://<host>:9091/healthz | python3 -m json.tool
 | `/analyze/latest` | GET | Latest analysis report |
 | `/jobs` | GET | List background jobs (with progress, before/after) |
 | `/jobs/{id}` | GET | Job status |
+| `/schema/graph` | GET | Full schema graph summary (tables, FKs, classifications) |
+| `/schema/refresh` | POST | Force re-introspection and cache update |
+| `/schema/cascade/{table}` | GET | Preview cascading inject plan (table, count, ratios) |
+| `/schema/children/{table}` | GET | Direct FK children of a table |
+| `/inject/cascade` | POST | Cascading inject — parent + proportional children via FK graph |
 | `/queries` | GET | List imported query sets |
 | `/queries/import-stats` | POST | Import from pg_stat_statements JSON |
 | `/queries/import-sql` | POST | Import SQL queries manually |
@@ -49,6 +54,36 @@ curl -s http://<host>:9091/healthz | python3 -m json.tool
 | `/replay/status` | GET | Live replay stats (executions, avg_ms, errors per query) |
 | `/reports` | GET | Saved reports |
 | `/reports/executive-summary` | POST | Compare multiple test runs, generate AI deployment report |
+
+## Schema Graph
+
+The control plane builds a NetworkX directed graph from FK introspection on startup.
+Cached in SQLite — instant load on restart.
+
+```bash
+# View the graph
+GET /schema/graph
+
+# Preview cascade inject plan
+GET /schema/cascade/orders?count=10000
+# → orders: 10,000 | order_items: 2,300 | payments: 2,300 | shipments: 700
+
+# Force re-introspection
+POST /schema/refresh
+```
+
+### Cascading Inject
+
+```bash
+# Inject with cascade (parent + children following FK graph)
+POST /inject/cascade {"table":"orders", "rows":10000, "cascade":true}
+
+# Single table inject (no cascade)
+POST /inject {"table":"audit_log", "rows":10000}
+```
+
+Cascade follows the FK graph using BFS, inserts parents first (topological order),
+then children with proportional row counts calculated from existing data ratios.
 
 ## Test Runs
 

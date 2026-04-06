@@ -1,6 +1,21 @@
 # Schema Introspection
 
-pg-stress discovers your schema at startup. No configuration required.
+pg-stress discovers your schema at startup using a **NetworkX directed graph**
+backed by SQLite cache. First run introspects PostgreSQL (2-5 seconds for 18 tables,
+10-30 seconds for 500 tables). Subsequent startups load from cache instantly.
+
+The schema graph powers:
+- **Cascading inject** — follow FK graph from parent → children with proportional ratios
+- **Table classification** — entity, transactional, append_only, lookup, hierarchical
+- **ORM pattern generation** — FK chains drive N+1, eager load, EXISTS patterns
+- **Insert ordering** — topological sort ensures parents before children
+- **WHAT IF preview** — shows cascade plan before executing
+
+## Cache Invalidation
+
+The graph is cached with a schema hash (table names + column counts). If you add/remove
+tables or columns, pg-stress detects the change and re-introspects automatically.
+Force refresh: `POST /schema/refresh` or click "Re-introspect" in the UI.
 
 ## What Gets Discovered
 

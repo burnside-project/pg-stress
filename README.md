@@ -26,24 +26,22 @@ After the test, Claude analyzes the diagnostics and gives tuning advice.
 
 ### Core Features
 
-- **Named Test Runs** — Start, stop, and compare tests. Every test resets to a known
-  baseline (production dump). Before/after snapshots saved to SQLite.
-- **Run on Managed PostgreSQL** — Private managed PostgreSQL validation — Load production-like 
-  data into a private managed PostgreSQL instance, deploy pg-stress on a test host in 
-  the same VPC/VNet or connected private network, and run validation without exposing 
-  the database to the public internet.
-- **Live Activity Ticker** — Real queries from `pg_stat_activity` updated every 2s,
-  color-coded by type (SELECT, INSERT, JOIN, EXISTS), with table names and durations.
-- **Schema Introspection** — Auto-discovers tables, FKs, indexes, classifies each table
-  (entity, transactional, append_only, lookup, hierarchical), builds FK chains.
-- **10 ORM Patterns** — N+1, eager load (join/subquery/selectin), bulk insert, pagination,
-  aggregation, EXISTS filter, relationship JOIN — applied to YOUR tables, not templates.
-- **WHAT IF Scenarios** — Inject 5M rows ("What if orders doubles?"), bulk update,
-  connection pressure, growth ladder (find breaking points).
-- **AI Analyzer** — Claude reads 11 PostgreSQL diagnostic datasets and returns actionable
-  tuning advice, query fixes, N+1 detection, capacity predictions.
-- **Fully Local** — SQLite for metrics, DuckDB for analytics, PostgreSQL for stress target.
-  Nothing leaves your network. Designed for one-off tests, not production monitoring.
+| Feature | Description |
+|---------|-------------|
+| **Named Test Runs** | Start, stop, and compare tests. Every test resets to a known baseline (production dump). Before/after snapshots saved to SQLite. |
+| **Schema Graph (NetworkX)** | Introspects tables, FKs, indexes on startup. Builds a directed graph cached in SQLite — instant load on restart, no repeated introspection. Scales to 5,000+ tables. |
+| **Cascading Inject** | Inject rows into a parent table and automatically inject proportional child rows following the FK graph. Ratios calculated from existing data. Works with any schema — ecommerce, CRM, healthcare. |
+| **WHAT IF Scenarios** | One scenario at a time, on top of active load generators: inject rows (with cascade), bulk update, connection spike, growth ladder. Live table stats with row deltas and spinning progress indicator. |
+| **Production Query Replay** | Import real queries from `pg_stat_statements` or SQL files. Replay at configurable concurrency alongside generators. Per-query timing (avg/min/max ms, errors). |
+| **Live Activity Ticker** | Real queries from `pg_stat_activity` updated every 2s, color-coded by type (SELECT, INSERT, JOIN, EXISTS), with table names and durations. On both portals. |
+| **10 ORM Patterns** | N+1, eager load (join/subquery/selectin), bulk insert, pagination, aggregation, EXISTS filter, relationship JOIN — applied to YOUR schema via SQLAlchemy automap. |
+| **AI Analyzer** | Claude reads 11 PostgreSQL diagnostic datasets. Returns tuning advice, query fixes, N+1 detection, capacity predictions. Executive summary compares across test runs. |
+| **3-Day Capacity Planning** | Day 1: baseline. Day 2: 2x growth. Day 3: with fixes. Day 4: compare all 3 reports. Hand off to pg-deploy for right-sized infrastructure. |
+| **DuckDB Analytics** | Fast time-series aggregations on SQLite metrics. Avg/peak TPS, cache ratio, growth rate — computed on demand, no import step. |
+| **PostgreSQL Config Viewer** | Live PG settings displayed on the dashboard — shared_buffers, work_mem, max_connections, etc. Deliberately modest defaults so AI Analyzer can recommend improvements. |
+| **Dual Portal UI** | Control Panel (`:3100`) for orchestration + Metrics Dashboard (`:8200`) for real-time charts. Cross-linked sidebars. Light mode matching Burnside Project style. |
+| **Fully Local** | SQLite for metrics, DuckDB for analytics, NetworkX for schema graph, PostgreSQL for stress target. Nothing leaves your network. |
+| **Managed PostgreSQL Support** | Load production data into a private managed PostgreSQL instance, deploy pg-stress on a test host in the same VPC/VNet. No public internet exposure. |
 
 ### pg-stress vs pg-collector
 
@@ -64,19 +62,22 @@ YOUR DATABASE (any schema, any size)
      ▼
 INTROSPECT ─── tables, FKs, indexes, row counts, types
      │          classify: entity | transactional | append_only | lookup | hierarchical
-     │          build FK chains: [customers → orders → order_items]
+     │          NetworkX directed graph cached in SQLite (instant on restart)
      ▼
 REFLECT ────── SQLAlchemy automap: ORM classes generated for every table
      │          relationships auto-detected from FK constraints
      ▼
-STRESS ─────── 10 ORM patterns applied to discovered schema
-     │          N+1, eager load, bulk insert, pagination, aggregation, EXISTS
-     │          + raw SQL generator + pgbench + chaos injection
+STRESS ─────── 10 ORM patterns + raw SQL + production query replay
+     │          cascading inject follows FK graph with proportional ratios
+     │          WHAT IF scenarios on top of active generators
      ▼
 CAPTURE ────── pg_stat_statements, table stats, cache ratio, locks, wait events
-     │          before/after deltas, anomaly detection
+     │          SQLite metrics (persistent), DuckDB analytics (on demand)
+     │          per-query replay timing, before/after snapshots per test run
      ▼
 ADVISE ─────── Claude analyzes diagnostics → tuning, query fixes, capacity predictions
+     │          executive summary across multiple test runs
+     │          deployment readiness report → hand off to pg-deploy
 ```
 
 ---
