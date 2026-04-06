@@ -152,6 +152,8 @@ export default function Home() {
   const [querySets, setQuerySets] = useState([])
   const [replayStatus, setReplayStatus] = useState(null)
   const [importText, setImportText] = useState("")
+  const [prevTableRows, setPrevTableRows] = useState({})
+  const [activeDataOp, setActiveDataOp] = useState(null)  // {type, table, jobId}
 
   const [f, setF] = useState({
     injectTable: "orders", injectRows: 1000000,
@@ -167,6 +169,14 @@ export default function Home() {
   const refresh = useCallback(async () => {
     try {
       const [st, jb] = await Promise.all([api("/status"), api("/jobs")])
+      // Track previous row counts for delta display.
+      if (st?.tables) {
+        setPrevTableRows(prev => {
+          const next = {}
+          for (const [t, d] of Object.entries(st.tables)) next[t] = prev[t] ?? d.n_live_tup
+          return next
+        })
+      }
       setStatus(st)
       setJobs(jb)
     } catch {}
@@ -203,6 +213,21 @@ export default function Home() {
     api("/tests").then(setTestHistory).catch(() => {})
     api("/queries").then(setQuerySets).catch(() => {})
   }, [])
+  // Active data operation — poll job status every 2s.
+  useEffect(() => {
+    if (!activeDataOp) return
+    const poll = async () => {
+      try {
+        const job = await api(`/jobs/${activeDataOp.jobId}`)
+        if (job.status === "completed" || job.status === "failed") {
+          setActiveDataOp(null)
+          refresh()
+        }
+      } catch {}
+    }
+    const i = setInterval(poll, 2000)
+    return () => clearInterval(i)
+  }, [activeDataOp, refresh])
   // Replay status — poll every 3s.
   useEffect(() => {
     const poll = async () => { try { setReplayStatus(await api("/replay/status")) } catch {} }
@@ -612,8 +637,11 @@ export default function Home() {
                 <label style={s.label}>Number of Rows</label>
                 <input style={s.input} type="number" value={f.injectRows} onChange={e => set("injectRows", +e.target.value)} />
               </div>
-              <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.inject}
-                onClick={() => act("inject", () => post("/inject", { table: f.injectTable, rows: f.injectRows }))}>
+              <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.inject || activeDataOp}
+                onClick={async () => {
+                  const r = await act("inject", () => post("/inject", { table: f.injectTable, rows: f.injectRows }))
+                  if (r?.job_id) setActiveDataOp({ type: "inject", table: f.injectTable, jobId: r.job_id })
+                }}>
                 {loading.inject ? "Injecting..." : `Inject ${fmt(f.injectRows)} rows into ${f.injectTable}`}
               </button>
             </div>
@@ -639,24 +667,45 @@ export default function Home() {
                 <label style={s.label}>Batch Size</label>
                 <input style={s.input} type="number" value={f.updateBatch} onChange={e => set("updateBatch", +e.target.value)} />
               </div>
-              <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.update}
-                onClick={() => act("update", () => post("/bulk-update", { table: f.updateTable, set_clause: f.updateSet, where_clause: f.updateWhere || null, batch_size: f.updateBatch }))}>
+              <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.update || activeDataOp}
+                onClick={async () => {
+                  const r = await act("update", () => post("/bulk-update", { table: f.updateTable, set_clause: f.updateSet, where_clause: f.updateWhere || null, batch_size: f.updateBatch }))
+                  if (r?.job_id) setActiveDataOp({ type: "bulk_update", table: f.updateTable, jobId: r.job_id })
+                }}>
                 {loading.update ? "Updating..." : "Run Bulk Update"}
               </button>
             </div>
 
             <div style={s.card("#f59e0b")}>
-              <div style={s.cardTitle}>Table Stats</div>
-              <div style={s.cardDesc}>Current row counts, dead tuples, and sizes.</div>
-              <div style={{ maxHeight: 280, overflow: "auto" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={s.cardTitle}>Table Stats</div>
+                {activeDataOp && (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 12, padding: "2px 10px", fontSize: 10, fontWeight: 600, color: "#92400e" }}>
+                    <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", border: "2px solid #f59e0b", borderTopColor: "transparent", animation: "spin 0.8s linear infinite" }} />
+                    {activeDataOp.type === "inject" ? "Injecting" : "Updating"} {activeDataOp.table}...
+                  </span>
+                )}
+              </div>
+              <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+              <div style={s.cardDesc}>Live row counts — updates every 5 seconds. Changes highlighted.</div>
+              <div style={{ maxHeight: 320, overflow: "auto" }}>
                 <table style={s.table}>
-                  <thead><tr><th style={s.th}>Table</th><th style={{ ...s.th, textAlign: "right" }}>Rows</th><th style={{ ...s.th, textAlign: "right" }}>Dead</th><th style={{ ...s.th, textAlign: "right" }}>Size</th></tr></thead>
+                  <thead><tr><th style={s.th}>Table</th><th style={{ ...s.th, textAlign: "right" }}>Rows</th><th style={{ ...s.th, textAlign: "right" }}>Change</th><th style={{ ...s.th, textAlign: "right" }}>Dead</th><th style={{ ...s.th, textAlign: "right" }}>Size</th></tr></thead>
                   <tbody>
                     {tables.map(t => {
                       const d = status.tables[t]
-                      return (<tr key={t}>
-                        <td style={s.td}>{t}</td>
-                        <td style={{ ...s.td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmt(d.n_live_tup)}</td>
+                      const prev = prevTableRows[t]
+                      const delta = (prev != null && d.n_live_tup !== prev) ? d.n_live_tup - prev : 0
+                      const isTarget = activeDataOp?.table === t
+                      return (<tr key={t} style={{ background: isTarget ? "#fefce8" : delta > 0 ? "#f0fdf4" : delta < 0 ? "#fef2f2" : "", transition: "background 0.5s" }}>
+                        <td style={{ ...s.td, fontWeight: isTarget ? 600 : 400 }}>
+                          {t}
+                          {isTarget && <span style={{ marginLeft: 4, fontSize: 10, color: "#f59e0b" }}>&#9203;</span>}
+                        </td>
+                        <td style={{ ...s.td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: delta !== 0 ? 700 : 400 }}>{fmt(d.n_live_tup)}</td>
+                        <td style={{ ...s.td, textAlign: "right", fontSize: 11, fontWeight: 600, color: delta > 0 ? "#16a34a" : delta < 0 ? "#dc2626" : "#e2e8f0" }}>
+                          {delta > 0 ? `+${fmt(delta)}` : delta < 0 ? fmt(delta) : "—"}
+                        </td>
                         <td style={{ ...s.td, textAlign: "right", color: d.n_dead_tup > 10000 ? "#dc2626" : "#94a3b8" }}>{fmt(d.n_dead_tup)}</td>
                         <td style={{ ...s.td, textAlign: "right", color: "#64748b" }}>{d.size}</td>
                       </tr>)
