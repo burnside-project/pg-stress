@@ -118,8 +118,7 @@ const NAV = [
   { id: "history", label: "Test History", dot: "#f59e0b", tip: "Past tests with before/after comparisons" },
   { section: "Stress Test" },
   { id: "target", label: "Database Target", dot: "#8b5cf6", tip: "Configure PG host, credentials, intensity, import dumps" },
-  { id: "operations", label: "Data Operations", dot: "#f59e0b", tip: "Inject rows, bulk update, simulate table growth" },
-  { id: "connections", label: "Connections", dot: "#3b82f6", tip: "Connection pressure, growth ladder, load generators" },
+  { id: "whatif", label: "WHAT IF Scenarios", dot: "#f59e0b", tip: "Run one scenario at a time on top of active load generators" },
   { section: "Query Replay" },
   { id: "queries", label: "Production Queries", dot: "#dc2626", tip: "Import and replay real production queries" },
   { section: "Introspection" },
@@ -421,7 +420,7 @@ export default function Home() {
                 <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>
                   <strong>1. Reset to baseline</strong> — Restore from your production dump so every test starts from the same known state.<br/><br/>
                   <strong>2. Run at intensity</strong> — ORM + SQL generators stress the database at Low, Medium, or High.<br/><br/>
-                  <strong>3. Inject & observe</strong> — Use Data Operations to inject rows, bulk update. Watch metrics in real-time.<br/><br/>
+                  <strong>3. WHAT IF & observe</strong> — Inject rows, bulk update, connection spike — all on top of running generators. Watch metrics in real-time.<br/><br/>
                   <strong>4. Stop & save</strong> — Final DB state captured. Before/after comparison saved to history.<br/><br/>
                   <strong>5. Compare</strong> — View any past test, compare TPS, cache ratio, growth across runs.
                 </div>
@@ -617,16 +616,31 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ═══ SECTION: Operations ════════════════════════════════════ */}
-        <div id="section-operations" style={s.section}>
+        {/* ═══ SECTION: WHAT IF Scenarios ═════════════════════════════ */}
+        <div id="section-whatif" style={s.section}>
           <div style={s.sectionHead}>
-            <span style={s.sectionTitle}>Data Operations</span>
-            <span style={s.sectionSub}>— Inject rows, bulk update, simulate table growth</span>
+            <span style={s.sectionTitle}>WHAT IF Scenarios</span>
+            <span style={s.sectionSub}>— Run one scenario at a time, on top of active load generators</span>
           </div>
+
+          {/* Active workload indicator */}
+          <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: svcs["load-generator"]?.status === "running" || svcs["load-generator-orm"]?.status === "running" ? "#16a34a" : "#94a3b8", animation: svcs["load-generator-orm"]?.status === "running" ? "pulse 2s infinite" : "none" }} />
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#1e40af" }}>
+                Background load: {[svcs["load-generator"]?.status === "running" && "Raw SQL", svcs["load-generator-orm"]?.status === "running" && "ORM"].filter(Boolean).join(" + ") || "None"}
+              </div>
+              <div style={{ fontSize: 11, color: "#3b82f6" }}>
+                WHAT IF scenarios run on top of active generators. Only one scenario at a time.
+                {activeDataOp && <span style={{ color: "#dc2626", fontWeight: 600 }}> — {activeDataOp.type} on {activeDataOp.table} in progress</span>}
+              </div>
+            </div>
+          </div>
+
           <div style={s.grid}>
             <div style={s.card("#f59e0b")}>
-              <div style={s.cardTitle}>Inject Rows</div>
-              <div style={s.cardDesc}>Simulate table growth. "What if orders grows by 5M rows?"</div>
+              <div style={s.cardTitle}>WHAT IF: Inject Rows</div>
+              <div style={s.cardDesc}>"What if this table grows by 5M rows while under load?"</div>
               <div style={s.gap}>
                 <label style={s.label}>Target Table</label>
                 <select style={s.select} value={f.injectTable} onChange={e => set("injectTable", e.target.value)}>
@@ -647,8 +661,8 @@ export default function Home() {
             </div>
 
             <div style={s.card("#f59e0b")}>
-              <div style={s.cardTitle}>Bulk Update</div>
-              <div style={s.cardDesc}>Mass UPDATE in batches. "What if we archive old orders?"</div>
+              <div style={s.cardTitle}>WHAT IF: Bulk Update</div>
+              <div style={s.cardDesc}>"What if we archive old orders while under load?"</div>
               <div style={s.gap}>
                 <label style={s.label}>Table</label>
                 <select style={s.select} value={f.updateTable} onChange={e => set("updateTable", e.target.value)}>
@@ -717,16 +731,10 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ═══ SECTION: Connections ═══════════════════════════════════ */}
-        <div id="section-connections" style={s.section}>
-          <div style={s.sectionHead}>
-            <span style={s.sectionTitle}>Transactions & Connections</span>
-            <span style={s.sectionSub}>— Stress concurrency, find breaking points, load generators</span>
-          </div>
-          <div style={s.grid}>
-            <div style={s.card("#3b82f6")}>
-              <div style={s.cardTitle}>Connection Pressure</div>
-              <div style={s.cardDesc}>Open N concurrent connections and sustain for duration.</div>
+            {/* Connection Pressure — same grid, same WHAT IF section */}
+            <div style={s.card("#f59e0b")}>
+              <div style={s.cardTitle}>WHAT IF: Connection Spike</div>
+              <div style={s.cardDesc}>"What if 200 connections hit at once while under load?"</div>
               <div style={s.row}>
                 <div style={{ flex: 1 }}><label style={s.label}>Connections</label><input style={s.input} type="number" value={f.connCount} onChange={e => set("connCount", +e.target.value)} /></div>
                 <div style={{ flex: 1 }}><label style={s.label}>Duration (sec)</label><input style={s.input} type="number" value={f.connDuration} onChange={e => set("connDuration", +e.target.value)} /></div>
@@ -736,15 +744,19 @@ export default function Home() {
                   </select>
                 </div>
               </div>
-              <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.conn}
-                onClick={() => act("conn", () => post("/connections", { connections: f.connCount, duration: f.connDuration, mode: f.connMode }))}>
+              <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.conn || activeDataOp}
+                onClick={async () => {
+                  const r = await act("conn", () => post("/connections", { connections: f.connCount, duration: f.connDuration, mode: f.connMode }))
+                  if (r?.job_id) setActiveDataOp({ type: "connections", table: `${f.connCount} conns`, jobId: r.job_id })
+                }}>
                 {loading.conn ? "Running..." : `Stress ${f.connCount} connections × ${f.connDuration}s`}
               </button>
             </div>
 
-            <div style={s.card("#3b82f6")}>
-              <div style={s.cardTitle}>Growth Ladder</div>
-              <div style={s.cardDesc}>Ramp connections step-by-step to find the breaking point.</div>
+            {/* Growth Ladder */}
+            <div style={s.card("#f59e0b")}>
+              <div style={s.cardTitle}>WHAT IF: Growth Ladder</div>
+              <div style={s.cardDesc}>"At what connection count does it break?"</div>
               <div style={s.gap}><label style={s.label}>Steps (connection counts, comma-separated)</label><input style={s.input} value={f.ladderSteps} onChange={e => set("ladderSteps", e.target.value)} /></div>
               <div style={s.row}>
                 <div style={{ flex: 1 }}><label style={s.label}>Seconds per step</label><input style={s.input} type="number" value={f.ladderDuration} onChange={e => set("ladderDuration", +e.target.value)} /></div>
@@ -755,16 +767,20 @@ export default function Home() {
                 </div>
               </div>
               {(() => { const steps = f.ladderSteps.split(",").filter(Boolean); return (
-                <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.ladder}
-                  onClick={() => act("ladder", () => post("/ladder", { steps: steps.map(Number), phase_duration: f.ladderDuration, mode: f.ladderMode }))}>
+                <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.ladder || activeDataOp}
+                  onClick={async () => {
+                    const r = await act("ladder", () => post("/ladder", { steps: steps.map(Number), phase_duration: f.ladderDuration, mode: f.ladderMode }))
+                    if (r?.job_id) setActiveDataOp({ type: "ladder", table: `${steps.length} steps`, jobId: r.job_id })
+                  }}>
                   {loading.ladder ? "Running..." : `Run ${steps.length} phases (~${Math.round(steps.length * f.ladderDuration / 60)} min)`}
                 </button>
               )})()}
             </div>
 
-            <div style={s.card("#3b82f6")}>
+            {/* Load Generators */}
+            <div style={s.card("#f59e0b")}>
               <div style={s.cardTitle}>Load Generators</div>
-              <div style={s.cardDesc}>Start additional workload sources alongside the raw SQL generator.</div>
+              <div style={s.cardDesc}>Background workload running alongside WHAT IF scenarios.</div>
               <table style={s.table}>
                 <thead><tr><th style={s.th}>Generator</th><th style={s.th}>Status</th><th style={s.th}></th></tr></thead>
                 <tbody>
