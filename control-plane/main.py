@@ -48,6 +48,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.on_event("startup")
+def startup_auto_load_queries():
+    """Auto-load queries from /app/queries/ on startup."""
+    queries_dir = Path(os.environ.get("QUERIES_DIR", "/app/queries"))
+    if not queries_dir.exists():
+        return
+    try:
+        from query_replay import import_pg_stat_statements, import_sql_files, list_query_sets
+        existing = list_query_sets()
+        if existing:
+            log.info("Queries already loaded (%d sets), skipping auto-load", len(existing))
+            return
+        sql_files = list(queries_dir.glob("*.sql"))
+        if sql_files:
+            r = import_sql_files("queries-dir", str(queries_dir))
+            log.info("Auto-loaded %d SQL queries from %s", r.get("query_count", 0), queries_dir)
+        json_path = queries_dir / "queries.json"
+        if json_path.exists():
+            data = json.loads(json_path.read_text())
+            r = import_pg_stat_statements("queries-json", data)
+            log.info("Auto-loaded %d queries from queries.json", r.get("query_count", 0))
+    except Exception as e:
+        log.warning("Auto-load queries failed: %s", e)
+
+
 # ── Configuration ────────────────────────────────────────────────────────
 
 PG_HOST = os.environ.get("PG_HOST", "postgres")
@@ -1003,10 +1029,40 @@ def api_import_sql(req: ImportSqlRequest):
     return import_sql_text(req.name, req.queries)
 
 
+QUERIES_DIR = Path(os.environ.get("QUERIES_DIR", "/app/queries"))
+
+
 @app.post("/queries/import-dir")
 def api_import_dir(data: dict):
     """Import queries from .sql files in a directory on the server."""
-    return import_sql_files(data.get("name", "unnamed"), data.get("dir", "/tmp/queries"))
+    return import_sql_files(data.get("name", "unnamed"), data.get("dir", str(QUERIES_DIR)))
+
+
+@app.post("/queries/reload")
+def api_reload_queries():
+    """Reload queries from the queries/ directory. Auto-imports .sql files and queries.json."""
+    results = []
+
+    if not QUERIES_DIR.exists():
+        return {"status": "no queries directory", "path": str(QUERIES_DIR)}
+
+    # Import .sql files.
+    sql_files = list(QUERIES_DIR.glob("*.sql"))
+    if sql_files:
+        r = import_sql_files("queries-dir", str(QUERIES_DIR))
+        results.append(r)
+
+    # Import queries.json if present.
+    json_path = QUERIES_DIR / "queries.json"
+    if json_path.exists():
+        try:
+            data = json.loads(json_path.read_text())
+            r = import_pg_stat_statements("queries-json", data)
+            results.append(r)
+        except Exception as e:
+            results.append({"error": str(e)})
+
+    return {"status": "reloaded", "path": str(QUERIES_DIR), "sets": results}
 
 
 @app.get("/queries")

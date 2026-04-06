@@ -299,6 +299,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/app/project
       - ./analyzer:/app/analyzer:ro
+      - ./queries:/app/queries:ro
       - control-plane-reports:/app/reports
       - control-plane-data:/data
     ports:

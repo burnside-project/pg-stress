@@ -836,8 +836,14 @@ export default function Home() {
 
             {/* Query sets list */}
             <div style={s.card("#dc2626")}>
-              <div style={s.cardTitle}>Imported Query Sets ({querySets.length})</div>
-              <div style={s.cardDesc}>Manage imported production queries.</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={s.cardTitle}>Imported Query Sets ({querySets.length})</div>
+                <button style={{ ...s.btn, ...s.btnBlue, fontSize: 10, padding: "3px 10px", marginLeft: "auto" }}
+                  onClick={async () => { await act("reloadQ", () => post("/queries/reload", {})); setQuerySets(await api("/queries")) }}>
+                  Reload from queries/
+                </button>
+              </div>
+              <div style={s.cardDesc}>Drop .sql files in <code style={{ background: "#f1f5f9", padding: "1px 4px", borderRadius: 2, fontSize: 10 }}>queries/</code> directory, or paste JSON above. Click Reload to scan the folder.</div>
               {querySets.length === 0 ? (
                 <p style={{ fontSize: 12, color: "#94a3b8" }}>No query sets imported yet.</p>
               ) : (
