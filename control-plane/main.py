@@ -50,6 +50,16 @@ app.add_middleware(
 
 
 @app.on_event("startup")
+def startup_load_schema_graph():
+    """Load schema graph from cache or introspect on startup."""
+    try:
+        from schema_graph import graph
+        graph.load()
+    except Exception as e:
+        log.warning("Schema graph load failed: %s", e)
+
+
+@app.on_event("startup")
 def startup_auto_load_queries():
     """Auto-load queries from /app/queries/ on startup."""
     queries_dir = Path(os.environ.get("QUERIES_DIR", "/app/queries"))
@@ -1045,6 +1055,118 @@ def get_active_test():
         return r.json() if r.status_code == 200 else {"status": "no_active_test"}
     except Exception:
         return {"status": "no_active_test"}
+
+
+# ── Schema Graph ─────────────────────────────────────────────────────────
+
+from schema_graph import graph as schema_graph
+
+
+@app.get("/schema/graph")
+def api_schema_graph():
+    """Full schema graph summary — tables, FKs, classifications."""
+    if not schema_graph.loaded:
+        schema_graph.load()
+    return schema_graph.summary()
+
+
+@app.post("/schema/refresh")
+def api_schema_refresh():
+    """Force re-introspection and cache update."""
+    return schema_graph.refresh()
+
+
+@app.get("/schema/cascade/{table}")
+def api_cascade_plan(table: str, count: int = 10000):
+    """Preview cascading inject plan for a table."""
+    if not schema_graph.loaded:
+        schema_graph.load()
+    if table not in schema_graph.tables:
+        raise HTTPException(404, f"Table '{table}' not found")
+    plan = schema_graph.cascade_plan(table, count)
+    total = sum(p["count"] for p in plan)
+    return {
+        "table": table,
+        "count": count,
+        "cascade": plan,
+        "total_rows": total,
+        "total_tables": len(plan),
+    }
+
+
+@app.get("/schema/children/{table}")
+def api_table_children(table: str):
+    """Get direct children of a table."""
+    if not schema_graph.loaded:
+        schema_graph.load()
+    return schema_graph.children(table)
+
+
+class CascadeInjectRequest(BaseModel):
+    table: str
+    rows: int = 10000
+    cascade: bool = True  # Include child tables
+
+
+@app.post("/inject/cascade")
+def cascade_inject(req: CascadeInjectRequest, background_tasks: BackgroundTasks):
+    """Inject rows with cascading to child tables."""
+    if not schema_graph.loaded:
+        schema_graph.load()
+
+    if req.cascade:
+        plan = schema_graph.cascade_plan(req.table, req.rows)
+    else:
+        plan = [{"table": req.table, "count": req.rows, "ratio": 1.0, "depth": 0}]
+
+    # Create a job for the cascade.
+    meta = {"plan": plan, "total_tables": len(plan), "total_rows": sum(p["count"] for p in plan)}
+    job_id = new_job("cascade_inject", meta={"before": meta})
+
+    def _do_cascade(job_id, plan):
+        try:
+            # Sort by depth (parents first).
+            sorted_plan = sorted(plan, key=lambda p: p["depth"])
+            total_done = 0
+            total_planned = sum(p["count"] for p in sorted_plan)
+
+            for i, step in enumerate(sorted_plan):
+                tbl = step["table"]
+                cnt = step["count"]
+                if cnt <= 0:
+                    continue
+
+                # Skip empty tables.
+                check = query("SELECT reltuples::bigint AS rows FROM pg_class WHERE relname = %s", (tbl,))
+                if check and check[0]["rows"] == 0:
+                    update_job(job_id, msg=f"Skipping {tbl} (empty table)")
+                    continue
+
+                update_job(job_id, progress=int(total_done / total_planned * 100),
+                           msg=f"Injecting {cnt:,} rows into {tbl} ({i+1}/{len(sorted_plan)} tables)")
+
+                # Use the same inject logic.
+                inject_req = InjectRequest(table=tbl, rows=cnt)
+                sub_job = new_job("inject", meta={"before": {}})
+                _do_inject(sub_job, inject_req)
+                total_done += cnt
+
+            # Final snapshot.
+            after = _snapshot_db()
+            complete_job(job_id, {"tables_injected": len(sorted_plan), "total_rows": total_done, "after": after})
+
+        except Exception as e:
+            complete_job(job_id, error=str(e))
+
+    background_tasks.add_task(_do_cascade, job_id, plan)
+
+    return {
+        "job_id": job_id,
+        "status": "started",
+        "plan": plan,
+        "total_tables": len(plan),
+        "total_rows": sum(p["count"] for p in plan),
+    }
 
 
 # ── Query Replay ─────────────────────────────────────────────────────────

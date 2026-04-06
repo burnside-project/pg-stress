@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py query_replay.py ./
+COPY main.py query_replay.py schema_graph.py ./
 
 EXPOSE 8100
 

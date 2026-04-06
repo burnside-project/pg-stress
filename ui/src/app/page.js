@@ -150,6 +150,8 @@ export default function Home() {
   const [querySets, setQuerySets] = useState([])
   const [replayStatus, setReplayStatus] = useState(null)
   const [importText, setImportText] = useState("")
+  const [cascadeEnabled, setCascadeEnabled] = useState(true)
+  const [cascadePlan, setCascadePlan] = useState(null)
   const [prevTableRows, setPrevTableRows] = useState({})
   const [activeDataOp, setActiveDataOp] = useState(null)
   const [infoCollapsed, setInfoCollapsed] = useState(true)  // {type, table, jobId}
@@ -640,37 +642,72 @@ export default function Home() {
           <div style={s.grid}>
             <div style={s.card("#f59e0b")}>
               <div style={s.cardTitle}>WHAT IF: Inject Rows</div>
-              <div style={s.cardDesc}>"What if this table grows while under load?"</div>
+              <div style={s.cardDesc}>"What if this table grows while under load?" Cascading inject follows FK relationships.</div>
               <div style={s.gap}>
                 <label style={s.label}>Target Table</label>
-                <select style={s.select} value={f.injectTable} onChange={e => set("injectTable", e.target.value)}>
+                <select style={s.select} value={f.injectTable} onChange={e => { set("injectTable", e.target.value); setCascadePlan(null) }}>
                   {tables.map(t => {
                     const fkCount = ormSchema?.relationships?.filter(r => r.child === t || r.parent === t).length || 0
-                    return <option key={t}>{t} {fkCount > 0 ? `(${fkCount} FK${fkCount > 1 ? 's' : ''})` : ''}</option>
+                    return <option key={t} value={t}>{t} {fkCount > 0 ? `(${fkCount} FK${fkCount > 1 ? 's' : ''})` : ''}</option>
                   })}
                 </select>
               </div>
-              {(() => {
-                const fkCount = ormSchema?.relationships?.filter(r => r.child === f.injectTable || r.parent === f.injectTable).length || 0
-                return fkCount >= 3 ? (
-                  <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 6, padding: 8, marginBottom: 8, fontSize: 11, color: "#92400e" }}>
-                    <strong>{f.injectTable}</strong> has {fkCount} FK relationships. Injection clones existing rows with valid FKs, but tables with many unique constraints may be slower. Large batches ({'>'}100K) may take several minutes.
-                  </div>
-                ) : null
-              })()}
               <div style={s.gap}>
-                <label style={s.label}>Number of Rows (recommended: 1K-100K per batch)</label>
-                <input style={s.input} type="number" value={f.injectRows} onChange={e => set("injectRows", +e.target.value)} />
+                <label style={s.label}>Number of Rows (recommended: 1K-100K)</label>
+                <input style={s.input} type="number" value={f.injectRows} onChange={e => { set("injectRows", +e.target.value); setCascadePlan(null) }} />
               </div>
+              <div style={{ marginBottom: 8 }}>
+                <label style={{ ...s.label, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                  <input type="checkbox" checked={cascadeEnabled} onChange={e => { setCascadeEnabled(e.target.checked); setCascadePlan(null) }} />
+                  Cascade to child tables (maintains realistic FK ratios)
+                </label>
+              </div>
+
+              {/* Preview button */}
+              <button style={{ ...s.btn, ...s.btnGhost, ...s.btnFull, marginBottom: 8 }}
+                onClick={async () => {
+                  try {
+                    const plan = await api(`/schema/cascade/${f.injectTable}?count=${f.injectRows}`)
+                    setCascadePlan(plan)
+                  } catch {}
+                }}>
+                Preview Cascade Plan
+              </button>
+
+              {/* Cascade preview */}
+              {cascadePlan && (
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: 10, marginBottom: 8, fontSize: 11 }}>
+                  <div style={{ fontWeight: 600, color: "#1e293b", marginBottom: 4 }}>
+                    {cascadeEnabled ? `${cascadePlan.total_tables} tables, ~${cascadePlan.total_rows?.toLocaleString()} total rows` : `1 table, ${f.injectRows.toLocaleString()} rows`}
+                  </div>
+                  {cascadeEnabled && cascadePlan.cascade?.map((step, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, padding: "2px 0", color: step.depth === 0 ? "#1e293b" : "#64748b" }}>
+                      <span style={{ minWidth: 16 }}>{step.depth > 0 ? "└" : ""}</span>
+                      <span style={{ fontWeight: step.depth === 0 ? 600 : 400, minWidth: 140 }}>{step.table}</span>
+                      <span>{step.count?.toLocaleString()} rows</span>
+                      <span style={{ color: "#94a3b8" }}>{step.ratio}x</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <button style={{ ...s.btn, ...s.btnBlue, ...s.btnFull }} disabled={loading.inject || activeDataOp}
                 onClick={async () => {
-                  const r = await act("inject", () => post("/inject", { table: f.injectTable, rows: f.injectRows }))
+                  const endpoint = cascadeEnabled ? "/inject/cascade" : "/inject"
+                  const body = cascadeEnabled
+                    ? { table: f.injectTable, rows: f.injectRows, cascade: true }
+                    : { table: f.injectTable, rows: f.injectRows }
+                  const r = await act("inject", () => post(endpoint, body))
                   if (r?.job_id) setActiveDataOp({ type: "inject", table: f.injectTable, jobId: r.job_id })
                 }}>
-                {loading.inject ? "Injecting..." : `Inject ${fmt(f.injectRows)} rows into ${f.injectTable}`}
+                {loading.inject ? "Injecting..." : cascadeEnabled
+                  ? `Cascade inject ${fmt(f.injectRows)} rows from ${f.injectTable}`
+                  : `Inject ${fmt(f.injectRows)} rows into ${f.injectTable}`}
               </button>
               <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6 }}>
-                Clones random rows with valid FK references. Unique text columns (email, sku) get random suffixes. PK auto-generates.
+                {cascadeEnabled
+                  ? "Injects parent rows first, then proportional child rows following FK graph. Ratios calculated from existing data."
+                  : "Single table inject. Clones random rows with valid FKs, unique columns get random suffixes."}
               </div>
             </div>
 
