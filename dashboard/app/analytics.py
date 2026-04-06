@@ -17,7 +17,7 @@ SQLITE_PATH = "/data/metrics.db"
 def _con():
     """Create a DuckDB connection that reads from the SQLite metrics store."""
     con = duckdb.connect(":memory:")
-    con.execute("SET memory_limit='64MB'")
+    con.execute("SET memory_limit='256MB'")
     con.execute("SET threads=1")
     con.execute("INSTALL sqlite; LOAD sqlite;")
     con.execute(f"ATTACH '{SQLITE_PATH}' AS metrics (TYPE sqlite, READ_ONLY);")
@@ -28,8 +28,16 @@ def summary(minutes: int = 60) -> dict:
     """Aggregate metrics over the last N minutes using DuckDB."""
     try:
         con = _con()
+        # Limit to last 500 samples max to avoid OOM on large datasets.
+        max_rows = min(minutes * 6, 500)  # ~6 samples/min at 10s interval
         result = con.execute(f"""
-            WITH parsed AS (
+            WITH raw AS (
+                SELECT timestamp, data
+                FROM metrics.samples
+                ORDER BY id DESC
+                LIMIT {max_rows}
+            ),
+            parsed AS (
                 SELECT
                     timestamp,
                     json_extract_string(data, '$.txn_per_sec')::DOUBLE AS txn_per_sec,
@@ -42,8 +50,7 @@ def summary(minutes: int = 60) -> dict:
                     json_extract_string(data, '$.lock_count')::INT AS locks,
                     json_extract_string(data, '$.deadlocks')::INT AS deadlocks,
                     json_extract_string(data, '$.temp_files')::INT AS temp_files
-                FROM metrics.samples
-                WHERE timestamp >= (now() - INTERVAL '{minutes} minutes')::VARCHAR
+                FROM raw
             )
             SELECT
                 COUNT(*) AS sample_count,
@@ -87,15 +94,18 @@ def tps_by_minute(minutes: int = 60) -> list[dict]:
     """TPS aggregated per minute for charting."""
     try:
         con = _con()
+        max_rows = min(minutes * 6, 500)
         rows = con.execute(f"""
-            WITH parsed AS (
+            WITH raw AS (
+                SELECT timestamp, data FROM metrics.samples ORDER BY id DESC LIMIT {max_rows}
+            ),
+            parsed AS (
                 SELECT
                     timestamp,
                     json_extract_string(data, '$.txn_per_sec')::DOUBLE AS txn_per_sec,
                     json_extract_string(data, '$.total_connections')::INT AS conns,
                     json_extract_string(data, '$.cache_hit_ratio')::DOUBLE AS cache_ratio
-                FROM metrics.samples
-                WHERE timestamp >= (now() - INTERVAL '{minutes} minutes')::VARCHAR
+                FROM raw
             )
             SELECT
                 date_trunc('minute', timestamp::TIMESTAMP) AS minute,
@@ -119,13 +129,16 @@ def growth_rate() -> list[dict]:
     try:
         con = _con()
         rows = con.execute("""
-            WITH first_last AS (
+            WITH bounded AS (
+                SELECT timestamp, data FROM metrics.samples ORDER BY id DESC LIMIT 500
+            ),
+            first_last AS (
                 SELECT
                     json_extract_string(data, '$.database_size_bytes')::BIGINT AS db_bytes,
                     timestamp,
                     ROW_NUMBER() OVER (ORDER BY timestamp ASC) AS rn_asc,
                     ROW_NUMBER() OVER (ORDER BY timestamp DESC) AS rn_desc
-                FROM metrics.samples
+                FROM bounded
             )
             SELECT
                 (SELECT db_bytes FROM first_last WHERE rn_asc = 1) AS first_bytes,
