@@ -116,16 +116,15 @@ const NAV = [
   { section: "Test Runs" },
   { id: "testrun", label: "Active Test", dot: "#dc2626", tip: "Start, stop, and manage named test runs" },
   { id: "history", label: "Test History", dot: "#f59e0b", tip: "Past tests with before/after comparisons" },
-  { section: "Stress Test" },
-  { id: "target", label: "Database Target", dot: "#8b5cf6", tip: "Configure PG host, credentials, intensity, import dumps" },
-  { id: "whatif", label: "WHAT IF Scenarios", dot: "#f59e0b", tip: "Run one scenario at a time on top of active load generators" },
-  { section: "Query Replay" },
-  { id: "queries", label: "Production Queries", dot: "#dc2626", tip: "Import and replay real production queries" },
-  { section: "Introspection" },
-  { id: "schema", label: "Schema & ORM", dot: "#8b5cf6", tip: "Auto-discovered tables, FK chains, SQLAlchemy classes" },
-  { section: "Analysis" },
-  { id: "analysis", label: "AI Analyzer", dot: "#10b981", tip: "Send diagnostics to Claude for tuning advice" },
-  { id: "reports", label: "Reports", dot: "#10b981", tip: "Saved AI analysis and ladder results" },
+  { section: "Configuration" },
+  { id: "target", label: "Database Target", dot: "#8b5cf6", tip: "PG host, credentials, intensity, BYOD import" },
+  { section: "Actions" },
+  { id: "whatif", label: "WHAT IF Scenarios", dot: "#f59e0b", tip: "Inject, update, connection spike — one at a time" },
+  { id: "queries", label: "Query Replay", dot: "#dc2626", tip: "Replay production queries alongside generators" },
+  { id: "analysis", label: "AI Analyzer", dot: "#10b981", tip: "Claude-powered tuning and capacity planning" },
+  { id: "reports", label: "Reports", dot: "#10b981", tip: "Saved analysis, executive summaries, downloads" },
+  { section: "Information" },
+  { id: "schema", label: "Schema & ORM", dot: "#8b5cf6", tip: "Introspection, FK chains, ORM classes (collapsible)" },
 ]
 
 // ── Page ────────────────────────────────────────────────────────────────
@@ -152,7 +151,8 @@ export default function Home() {
   const [replayStatus, setReplayStatus] = useState(null)
   const [importText, setImportText] = useState("")
   const [prevTableRows, setPrevTableRows] = useState({})
-  const [activeDataOp, setActiveDataOp] = useState(null)  // {type, table, jobId}
+  const [activeDataOp, setActiveDataOp] = useState(null)
+  const [infoCollapsed, setInfoCollapsed] = useState(true)  // {type, table, jobId}
 
   const [f, setF] = useState({
     injectTable: "orders", injectRows: 10000,
@@ -990,98 +990,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* ═══ SECTION: Schema Introspection & ORM ═══════════════════ */}
-        {ormSchema && (
-        <div id="section-schema" style={s.section}>
-          <div style={s.sectionHead}>
-            <span style={s.sectionTitle}>Schema Introspection & ORM</span>
-            <span style={s.sectionSub}>— SQLAlchemy auto-discovered classes, FK chains, table classification</span>
-          </div>
-          <div style={s.grid}>
-            <div style={s.card("#8b5cf6")}>
-              <div style={s.cardTitle}>Table Classification</div>
-              <div style={s.cardDesc}>How pg-stress categorized your {ormSchema.total_tables} tables ({ormSchema.total_size}).</div>
-              <table style={s.table}>
-                <tbody>
-                  {Object.entries(ormSchema.classification || {}).map(([role, tbls]) => (
-                    <tr key={role}><td style={{ ...s.td, color: "#64748b", width: 120, textTransform: "capitalize", fontWeight: 500 }}>{role.replace("_", " ")}</td><td style={{ ...s.td, fontSize: 12 }}>{tbls.length > 0 ? tbls.join(", ") : "—"}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={s.card("#8b5cf6")}>
-              <div style={s.cardTitle}>ORM Operations</div>
-              <div style={s.cardDesc}>Which tables are eligible for each operation type.</div>
-              <table style={s.table}>
-                <tbody>
-                  <tr><td style={{ ...s.td, color: "#64748b", width: 100, fontWeight: 500 }}>Queryable</td><td style={{ ...s.td, fontSize: 12 }}>{(ormSchema.operations?.queryable || []).join(", ") || "—"}</td></tr>
-                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>Insertable</td><td style={{ ...s.td, fontSize: 12 }}>{(ormSchema.operations?.insertable || []).join(", ") || "—"}</td></tr>
-                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>Updatable</td><td style={{ ...s.td, fontSize: 12 }}>{(ormSchema.operations?.updatable || []).join(", ") || "—"}</td></tr>
-                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>Paginable</td><td style={{ ...s.td, fontSize: 12 }}>{(ormSchema.operations?.paginable || []).join(", ") || "—"}</td></tr>
-                </tbody>
-              </table>
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4, fontWeight: 500 }}>Pattern Mix Weights</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                  {Object.entries(ormSchema.mix_weights || {}).map(([k, v]) => (
-                    <span key={k} style={{ background: "#f5f3ff", padding: "2px 8px", borderRadius: 4, fontSize: 11, color: "#7c3aed", border: "1px solid #ede9fe" }}>{k}: {v}%</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div style={s.card("#8b5cf6")}>
-              <div style={s.cardTitle}>FK Relationships ({(ormSchema.relationships || []).length})</div>
-              <div style={s.cardDesc}>Foreign key graph discovered from your schema.</div>
-              <table style={s.table}>
-                <thead><tr><th style={s.th}>Parent</th><th style={s.th}>Child</th><th style={s.th}>FK Column</th></tr></thead>
-                <tbody>
-                  {(ormSchema.relationships || []).map((r, i) => (
-                    <tr key={i}><td style={s.td}>{r.parent}</td><td style={s.td}>{r.child}</td><td style={{ ...s.td, color: "#64748b" }}>{r.via}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={s.card("#8b5cf6")}>
-              <div style={s.cardTitle}>FK Chains ({(ormSchema.fk_chains || []).length})</div>
-              <div style={s.cardDesc}>Multi-hop chains that drive N+1 and eager load patterns.</div>
-              <div style={{ maxHeight: 300, overflow: "auto" }}>
-                {(ormSchema.fk_chains || []).map((c, i) => (
-                  <div key={i} style={{ padding: "4px 0", borderBottom: "1px solid #f1f5f9", fontSize: 12 }}>
-                    <span style={{ color: "#94a3b8", marginRight: 8 }}>depth {c.depth}</span>
-                    {c.tables.join(" → ")}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ ...s.card("#8b5cf6"), gridColumn: "1 / -1" }}>
-              <div style={s.cardTitle}>SQLAlchemy ORM Classes ({Object.keys(ormSchema.orm_classes || {}).length})</div>
-              <div style={s.cardDesc}>Auto-generated via automap_base() — no models to write.</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: 12, marginTop: 8 }}>
-                {Object.entries(ormSchema.orm_classes || {}).map(([name, info]) => (
-                  <div key={name} style={{ background: "#f8fafc", borderRadius: 6, padding: 12, border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontWeight: 600, color: "#7c3aed", fontSize: 13, marginBottom: 4 }}>{name}</div>
-                    <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>
-                      Columns: <span style={{ color: "#64748b" }}>{info.columns.join(", ")}</span>
-                    </div>
-                    {info.relationships.length > 0 && (
-                      <div style={{ fontSize: 11, color: "#94a3b8" }}>
-                        Relationships: {info.relationships.map((r, i) => (
-                          <span key={i} style={{ color: "#16a34a", marginLeft: 4 }}>{r.name} → {r.target} ({r.direction})</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-        )}
-
         {/* ═══ SECTION: Analysis & Reports ═══════════════════════════ */}
         <div id="section-analysis" style={s.section}>
           <div style={s.sectionHead}>
@@ -1249,6 +1157,102 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        {/* ═══ SECTION: Schema Introspection & ORM (collapsible) ════ */}
+        {ormSchema && (
+        <div id="section-schema" style={s.section}>
+          <div style={{ ...s.sectionHead, cursor: "pointer", userSelect: "none" }} onClick={() => setInfoCollapsed(!infoCollapsed)}>
+            <span style={s.sectionTitle}>Schema Introspection & ORM</span>
+            <span style={s.sectionSub}>— {ormSchema.total_tables} tables, {ormSchema.relationships?.length || 0} FKs, {Object.keys(ormSchema.orm_classes || {}).length} ORM classes</span>
+            <div style={{ flex: 1 }} />
+            <span style={{ fontSize: 11, color: "#64748b", padding: "3px 10px", border: "1px solid #e2e8f0", borderRadius: 4, background: "#f8fafc" }}>
+              {infoCollapsed ? "Show Details" : "Hide Details"}
+            </span>
+          </div>
+          {!infoCollapsed && <div style={s.grid}>
+            <div style={s.card("#8b5cf6")}>
+              <div style={s.cardTitle}>Table Classification</div>
+              <div style={s.cardDesc}>How pg-stress categorized your {ormSchema.total_tables} tables ({ormSchema.total_size}).</div>
+              <table style={s.table}>
+                <tbody>
+                  {Object.entries(ormSchema.classification || {}).map(([role, tbls]) => (
+                    <tr key={role}><td style={{ ...s.td, color: "#64748b", width: 120, textTransform: "capitalize", fontWeight: 500 }}>{role.replace("_", " ")}</td><td style={{ ...s.td, fontSize: 12 }}>{tbls.length > 0 ? tbls.join(", ") : "—"}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={s.card("#8b5cf6")}>
+              <div style={s.cardTitle}>ORM Operations</div>
+              <div style={s.cardDesc}>Which tables are eligible for each operation type.</div>
+              <table style={s.table}>
+                <tbody>
+                  <tr><td style={{ ...s.td, color: "#64748b", width: 100, fontWeight: 500 }}>Queryable</td><td style={{ ...s.td, fontSize: 12 }}>{(ormSchema.operations?.queryable || []).join(", ") || "—"}</td></tr>
+                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>Insertable</td><td style={{ ...s.td, fontSize: 12 }}>{(ormSchema.operations?.insertable || []).join(", ") || "—"}</td></tr>
+                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>Updatable</td><td style={{ ...s.td, fontSize: 12 }}>{(ormSchema.operations?.updatable || []).join(", ") || "—"}</td></tr>
+                  <tr><td style={{ ...s.td, color: "#64748b", fontWeight: 500 }}>Paginable</td><td style={{ ...s.td, fontSize: 12 }}>{(ormSchema.operations?.paginable || []).join(", ") || "—"}</td></tr>
+                </tbody>
+              </table>
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4, fontWeight: 500 }}>Pattern Mix Weights</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {Object.entries(ormSchema.mix_weights || {}).map(([k, v]) => (
+                    <span key={k} style={{ background: "#f5f3ff", padding: "2px 8px", borderRadius: 4, fontSize: 11, color: "#7c3aed", border: "1px solid #ede9fe" }}>{k}: {v}%</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={s.card("#8b5cf6")}>
+              <div style={s.cardTitle}>FK Relationships ({(ormSchema.relationships || []).length})</div>
+              <div style={s.cardDesc}>Foreign key graph discovered from your schema.</div>
+              <table style={s.table}>
+                <thead><tr><th style={s.th}>Parent</th><th style={s.th}>Child</th><th style={s.th}>FK Column</th></tr></thead>
+                <tbody>
+                  {(ormSchema.relationships || []).map((r, i) => (
+                    <tr key={i}><td style={s.td}>{r.parent}</td><td style={s.td}>{r.child}</td><td style={{ ...s.td, color: "#64748b" }}>{r.via}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={s.card("#8b5cf6")}>
+              <div style={s.cardTitle}>FK Chains ({(ormSchema.fk_chains || []).length})</div>
+              <div style={s.cardDesc}>Multi-hop chains that drive N+1 and eager load patterns.</div>
+              <div style={{ maxHeight: 300, overflow: "auto" }}>
+                {(ormSchema.fk_chains || []).map((c, i) => (
+                  <div key={i} style={{ padding: "4px 0", borderBottom: "1px solid #f1f5f9", fontSize: 12 }}>
+                    <span style={{ color: "#94a3b8", marginRight: 8 }}>depth {c.depth}</span>
+                    {c.tables.join(" → ")}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ ...s.card("#8b5cf6"), gridColumn: "1 / -1" }}>
+              <div style={s.cardTitle}>SQLAlchemy ORM Classes ({Object.keys(ormSchema.orm_classes || {}).length})</div>
+              <div style={s.cardDesc}>Auto-generated via automap_base() — no models to write.</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: 12, marginTop: 8 }}>
+                {Object.entries(ormSchema.orm_classes || {}).map(([name, info]) => (
+                  <div key={name} style={{ background: "#f8fafc", borderRadius: 6, padding: 12, border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontWeight: 600, color: "#7c3aed", fontSize: 13, marginBottom: 4 }}>{name}</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>
+                      Columns: <span style={{ color: "#64748b" }}>{info.columns.join(", ")}</span>
+                    </div>
+                    {info.relationships.length > 0 && (
+                      <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                        Relationships: {info.relationships.map((r, i) => (
+                          <span key={i} style={{ color: "#16a34a", marginLeft: 4 }}>{r.name} → {r.target} ({r.direction})</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>}
+        </div>
+        )}
 
         {/* ═══ SECTION: Data Management ═════════════════════════════ */}
         <div style={s.section}>
