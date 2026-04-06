@@ -17,6 +17,8 @@ SQLITE_PATH = "/data/metrics.db"
 def _con():
     """Create a DuckDB connection that reads from the SQLite metrics store."""
     con = duckdb.connect(":memory:")
+    con.execute("SET memory_limit='64MB'")
+    con.execute("SET threads=1")
     con.execute("INSTALL sqlite; LOAD sqlite;")
     con.execute(f"ATTACH '{SQLITE_PATH}' AS metrics (TYPE sqlite, READ_ONLY);")
     return con
