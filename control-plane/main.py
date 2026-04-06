@@ -402,6 +402,7 @@ def _do_inject(job_id: str, req: InjectRequest):
                     SELECT {select_list} FROM {req.table}
                     ORDER BY random()
                     LIMIT {{batch}}
+                    ON CONFLICT DO NOTHING
                 """
             else:
                 template = f"""
@@ -409,17 +410,22 @@ def _do_inject(job_id: str, req: InjectRequest):
                     SELECT * FROM {req.table}
                     ORDER BY random()
                     LIMIT {{batch}}
+                    ON CONFLICT DO NOTHING
                 """
 
+        skipped = 0
         while remaining > 0:
             batch = min(remaining, batch_size)
             sql = template.replace("{batch}", str(batch))
-            execute(sql)
+            actual = execute(sql)  # returns rowcount
             remaining -= batch
-            total_inserted += batch
-            pct = int((total_inserted / req.rows) * 100)
-            update_job(job_id, progress=pct, msg=f"Injected {total_inserted:,} / {req.rows:,} rows into {req.table}")
-            log.info("inject %s: %d / %d rows", req.table, total_inserted, req.rows)
+            total_inserted += actual if actual else batch
+            if actual is not None and actual < batch:
+                skipped += batch - actual
+            pct = int(((req.rows - remaining) / req.rows) * 100)
+            skip_msg = f" (skipped {skipped:,} conflicts)" if skipped else ""
+            update_job(job_id, progress=pct, msg=f"Injected {total_inserted:,} / {req.rows:,} into {req.table}{skip_msg}")
+            log.info("inject %s: %d / %d rows (skipped %d)", req.table, total_inserted, req.rows, skipped)
 
         update_job(job_id, progress=95, msg=f"Running ANALYZE on {req.table}...")
         execute(f"ANALYZE {req.table}")
